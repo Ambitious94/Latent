@@ -1,0 +1,19 @@
+[
+  {
+    "title": "Sample Finance Document",
+    "text": "Apple Inc. is an American multinational technology company headquartered in Cupertino, California. Tim Cook is the current CEO of Apple Inc. Apple was founded by Steve Jobs, Steve Wozniak, and Ronald Wayne in 1976. The company is known for products like iPhone, iPad, and MacBook. In 2023, Apple reported revenue of $394.3 billion.",
+    "entities": [
+      {"text": "Apple Inc.", "type": "Organization"},
+      {"text": "Cupertino", "type": "Location"},
+      {"text": "California", "type": "Location"},
+      {"text": "Tim Cook", "type": "Person"},
+      {"text": "Steve Jobs", "type": "Person"},
+      {"text": "Steve Wozniak", "type": "Person"},
+      {"text": "Ronald Wayne", "type": "Person"},
+      {"text": "iPhone", "type": "Product"},
+      {"text": "iPad", "type": "Product"},
+      {"text": "MacBook", "type": "Product"},
+      {"text": "$394.3 billion", "type": "Money"}
+    ]
+  }
+]

@@ -1,0 +1,26 @@
+STARBUCKS COFFEE
+Store #1234
+123 Main Street
+Seattle, WA 98101
+Tel: (206) 555-0123
+
+Date: 2024-01-15
+Time: 14:30:25
+Receipt: #7890
+
+Cashier: John Doe
+
+ITEMS:
+Grande Latte        $5.25
+Chocolate Croissant $3.95
+Blueberry Muffin    $4.50
+
+SUBTOTAL           $13.70
+TAX (10%)          $1.37
+TOTAL              $15.07
+
+PAYMENT
+Card: **** **** **** 1234
+Amount: $15.07
+
+Thank you for visiting!

@@ -1,0 +1,22 @@
+EMPLOYMENT APPLICATION FORM
+
+PERSONAL INFORMATION
+First Name: [John]          Last Name: [Smith]
+Date of Birth: [01/15/1990]  Social Security: [XXX-XX-1234]
+Address: [456 Oak Avenue, Springfield, IL 62701]
+Phone: [(217) 555-0199]     Email: [john.smith@email.com]
+
+EMPLOYMENT HISTORY
+Company Name: [Tech Solutions Inc.]
+Position: [Software Engineer]
+Start Date: [06/2018]       End Date: [Present]
+Supervisor: [Jane Doe]      Phone: [(555) 123-4567]
+
+EDUCATION
+School Name: [University of Illinois]
+Degree: [Bachelor of Science]
+Major: [Computer Science]
+Graduation Date: [05/2016]
+
+I certify that the information provided is true and complete.
+Signature: ________________  Date: [01/20/2024]
