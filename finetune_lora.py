@@ -24,6 +24,7 @@ from peft import LoraConfig, get_peft_model, TaskType
 from torch.utils.data import Dataset
 from PIL import Image
 from data import load_funsd, load_docred, load_cord, load_finer
+from prompts import DOCRED_REL_MAP
 
 
 class DocumentExtractionDataset(Dataset):
@@ -83,21 +84,39 @@ Output:
 }"""
         
         elif self.task == "docred":
-            # DocRED: 包含实体列表 + 简化的关系提示
+            # DocRED: 语义化关系名 — 将 P-ID 替换为自然语言名称
+            # 构建可用关系列表（自然语言）
+            rel_names_list = ", ".join(
+                f'"{name}"' for name in DOCRED_REL_MAP.values()
+            )
+            
+            # 将 gold 中的 P-ID 转为自然语言关系名
+            try:
+                gold_data = json.loads(gold) if isinstance(gold, str) else gold
+                if isinstance(gold_data, dict) and "relations" in gold_data:
+                    for r in gold_data["relations"]:
+                        pid = r.get("relation", "")
+                        if pid in DOCRED_REL_MAP:
+                            r["relation"] = DOCRED_REL_MAP[pid]
+                    gold = json.dumps(gold_data, ensure_ascii=False)
+            except (json.JSONDecodeError, TypeError):
+                pass
+            
             instruction = f"""Task: Document-level relation extraction.
 
 Entities in this document:
 {entity_list}
 
-Extract relations between entities using Wikidata property IDs.
-Common relations: P17(country), P131(located in), P27(citizenship), P569(birth date), P570(death date), P19(birthplace), P20(death place), P69(educated at), P108(employer), P102(political party), P40(child), P26(spouse), P22(father), P25(mother).
+Extract relations between the entities listed above. Use the exact natural-language relation names below.
+
+Valid relation names: {rel_names_list}
 
 Output JSON format:
-{{"relations": [{{"head": "Entity Name", "relation": "P17", "tail": "Country Name", "evidence": [0, 1]}}]}}
+{{"relations": [{{"head": "Entity Name", "relation": "country", "tail": "Country Name", "evidence": [0, 1]}}]}}
 
 Rules:
-1. head/tail must be entity names from the list above
-2. relation must be a valid P-ID
+1. head/tail must be entity names from the entity list above
+2. relation must be one of the valid relation names listed above (use the exact string)
 3. evidence is list of sentence indices (0-based) that support this relation"""
         
         elif self.task == "cord":

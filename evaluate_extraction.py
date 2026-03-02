@@ -5,6 +5,7 @@ import json
 import re
 from typing import Dict, List, Any
 from collections import defaultdict
+from prompts import DOCRED_REL_MAP, REL_NAME_TO_ID
 
 
 def extract_json_from_text(text: str) -> dict:
@@ -47,6 +48,25 @@ def normalize_entity_name(name: str) -> str:
     return normalized
 
 
+def _normalize_relation(rel: str) -> str:
+    """将关系字符串统一为 P-ID 格式，支持自然语言名和 P-ID 两种输入"""
+    rel = rel.strip()
+    # 已经是 P-ID 格式 (P17, P131, ...)
+    if re.match(r'^P\d+$', rel):
+        return rel
+    # 尝试从自然语言名反向查找 P-ID
+    pid = REL_NAME_TO_ID.get(rel.lower())
+    if pid:
+        return pid
+    # 容错: 尝试模糊匹配 (去除冠词、介词差异)
+    rel_lower = rel.lower()
+    for name, pid in REL_NAME_TO_ID.items():
+        if rel_lower in name or name in rel_lower:
+            return pid
+    # 无法映射，原样返回
+    return rel
+
+
 def evaluate_docred(predictions: List[Dict], golds: List[Dict]) -> Dict[str, float]:
     """
     评估 DocRED 关系抽取
@@ -55,7 +75,8 @@ def evaluate_docred(predictions: List[Dict], golds: List[Dict]) -> Dict[str, flo
     支持:
     1. 实体名称模糊匹配(忽略大小写)
     2. 从模型输出中智能提取JSON
-    3. 分别统计每个关系类型的性能
+    3. 自然语言关系名 ↔ P-ID 双向匹配
+    4. 分别统计每个关系类型的性能
     """
     pred_relations = []
     gold_relations = []
@@ -73,7 +94,7 @@ def evaluate_docred(predictions: List[Dict], golds: List[Dict]) -> Dict[str, flo
             for r in pred_rels:
                 head = normalize_entity_name(r.get("head", ""))
                 tail = normalize_entity_name(r.get("tail", ""))
-                rel = r.get("relation", "").strip()
+                rel = _normalize_relation(r.get("relation", ""))
                 if head and tail and rel:
                     pred_relations.append((head, rel, tail))
         except Exception as e:
@@ -88,7 +109,7 @@ def evaluate_docred(predictions: List[Dict], golds: List[Dict]) -> Dict[str, flo
             for r in gold_rels:
                 head = normalize_entity_name(r.get("head", ""))
                 tail = normalize_entity_name(r.get("tail", ""))
-                rel = r.get("relation", "").strip()
+                rel = _normalize_relation(r.get("relation", ""))
                 if head and tail and rel:
                     gold_relations.append((head, rel, tail))
         except Exception as e:

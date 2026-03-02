@@ -767,6 +767,109 @@ Present your reasoning, and then clearly state your final answer at the end.
 
 # ============= Document Extraction Dataset Prompts =============
 
+# DocRED P-ID → 自然语言关系名映射 (全部96个Wikidata属性)
+DOCRED_REL_MAP = {
+    "P6": "head of government",
+    "P17": "country",
+    "P19": "place of birth",
+    "P20": "place of death",
+    "P22": "father",
+    "P25": "mother",
+    "P26": "spouse",
+    "P27": "country of citizenship",
+    "P30": "continent",
+    "P31": "instance of",
+    "P35": "head of state",
+    "P36": "capital",
+    "P37": "official language",
+    "P39": "position held",
+    "P40": "child",
+    "P50": "author",
+    "P54": "member of sports team",
+    "P57": "director",
+    "P58": "screenwriter",
+    "P69": "educated at",
+    "P86": "composer",
+    "P102": "member of political party",
+    "P108": "employer",
+    "P112": "founded by",
+    "P118": "league",
+    "P123": "publisher",
+    "P127": "owned by",
+    "P131": "located in the administrative territorial entity",
+    "P136": "genre",
+    "P137": "operator",
+    "P140": "religion",
+    "P150": "contains administrative territorial entity",
+    "P155": "follows",
+    "P156": "followed by",
+    "P159": "headquarters location",
+    "P161": "cast member",
+    "P162": "producer",
+    "P166": "award received",
+    "P170": "creator",
+    "P171": "parent taxon",
+    "P172": "ethnic group",
+    "P175": "performer",
+    "P176": "manufacturer",
+    "P178": "developer",
+    "P179": "series",
+    "P190": "sister city",
+    "P194": "legislative body",
+    "P205": "basin country",
+    "P206": "located in or next to body of water",
+    "P241": "military branch",
+    "P264": "record label",
+    "P272": "production company",
+    "P276": "location",
+    "P279": "subclass of",
+    "P355": "subsidiary",
+    "P361": "part of",
+    "P364": "original language of work",
+    "P400": "platform",
+    "P403": "mouth of the watercourse",
+    "P449": "original network",
+    "P463": "member of",
+    "P488": "chairperson",
+    "P495": "country of origin",
+    "P527": "has part",
+    "P551": "residence",
+    "P569": "date of birth",
+    "P570": "date of death",
+    "P571": "inception",
+    "P576": "dissolved, abolished or demolished",
+    "P577": "publication date",
+    "P580": "start time",
+    "P582": "end time",
+    "P585": "point in time",
+    "P607": "conflict",
+    "P674": "characters",
+    "P676": "lyrics by",
+    "P706": "located on terrain feature",
+    "P710": "participant",
+    "P737": "influenced by",
+    "P740": "location of formation",
+    "P749": "parent organization",
+    "P800": "notable work",
+    "P807": "separated from",
+    "P840": "narrative location",
+    "P937": "work location",
+    "P1001": "applies to jurisdiction",
+    "P1056": "product or material produced",
+    "P1198": "unemployment rate",
+    "P1336": "territory claimed by",
+    "P1344": "participant of",
+    "P1365": "replaces",
+    "P1366": "replaced by",
+    "P1376": "capital of",
+    "P1412": "languages spoken, written or signed",
+    "P1441": "present in work",
+    "P3373": "sibling",
+}
+
+# 反向映射: 自然语言名 → P-ID (小写匹配)
+REL_NAME_TO_ID = {name.lower(): pid for pid, name in DOCRED_REL_MAP.items()}
+
 # DocRED relation definitions (all 96 Wikidata properties)
 DOCRED_RELATIONS_FULL = """ALL VALID RELATIONS (use these IDs):
 
@@ -884,10 +987,12 @@ def build_extraction_prompts_sequential(dataset: str, role: str, question: str, 
     
     # Dataset-specific instructions
     if dataset == "docred":
-        task_desc = "document-level relation extraction using Wikidata property IDs."
+        task_desc = "document-level relation extraction using natural-language relation names."
         focus_areas = "named entities (persons, organizations, locations, dates, etc.) and their relationships"
         
-        output_constraint = DOCRED_RELATIONS_FULL
+        # 使用语义化关系名列表，与 LoRA 训练格式一致
+        rel_names_list = ", ".join(f'"{name}"' for name in DOCRED_REL_MAP.values())
+        output_constraint = f"Valid relation names: {rel_names_list}\nUse the EXACT relation name string from this list."
     
     elif dataset == "cord":
         task_desc = "receipt/invoice information extraction. Extract structured purchase information."
@@ -1022,9 +1127,10 @@ def build_extraction_prompts_hierarchical(dataset: str, role: str, question: str
     
     # Dataset-specific instructions
     if dataset == "docred":
-        task_desc = "document-level relation extraction using Wikidata property IDs"
-        focus_areas = "named entities and their relationships using Wikidata IDs"
-        output_constraint = DOCRED_RELATIONS_FULL
+        task_desc = "document-level relation extraction using natural-language relation names"
+        focus_areas = "named entities and their relationships"
+        rel_names_list = ", ".join(f'"{name}"' for name in DOCRED_REL_MAP.values())
+        output_constraint = f"Valid relation names: {rel_names_list}\nUse the EXACT relation name string from this list."
     
     elif dataset == "cord":
         task_desc = "receipt/invoice extraction"
@@ -1567,20 +1673,25 @@ def build_lora_extraction_prompt(dataset: str, question: str, item: dict, args=N
     system_msg = "You are an expert document information extraction system. Extract structured information accurately and output valid JSON only."
     
     if dataset == "docred":
+        # 语义化关系名 — 与训练时格式一致
+        rel_names_list = ", ".join(
+            f'"{name}"' for name in DOCRED_REL_MAP.values()
+        )
         instruction = f"""Task: Document-level relation extraction.
 
 Entities in this document:
 {entity_list}
 
-Extract relations between entities using Wikidata property IDs.
-{DOCRED_COMMON_RELATIONS}
+Extract relations between the entities listed above. Use the exact natural-language relation names below.
+
+Valid relation names: {rel_names_list}
 
 Output JSON format:
-{{"relations": [{{"head": "Entity Name", "relation": "P17", "tail": "Country Name", "evidence": [0, 1]}}]}}
+{{"relations": [{{"head": "Entity Name", "relation": "country", "tail": "Country Name", "evidence": [0, 1]}}]}}
 
 Rules:
-1. head/tail must be entity names from the list above
-2. relation must be a valid P-ID
+1. head/tail must be entity names from the entity list above
+2. relation must be one of the valid relation names listed above (use the exact string)
 3. evidence is list of sentence indices (0-based) that support this relation"""
     
     elif dataset == "funsd":
