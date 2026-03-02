@@ -987,12 +987,12 @@ def build_extraction_prompts_sequential(dataset: str, role: str, question: str, 
     
     # Dataset-specific instructions
     if dataset == "docred":
-        task_desc = "document-level relation extraction using natural-language relation names."
+        task_desc = "document-level relation extraction using entity indices and natural-language relation names."
         focus_areas = "named entities (persons, organizations, locations, dates, etc.) and their relationships"
         
-        # 使用语义化关系名列表，与 LoRA 训练格式一致
+        # 使用语义化关系名列表 + 索引抽取格式
         rel_names_list = ", ".join(f'"{name}"' for name in DOCRED_REL_MAP.values())
-        output_constraint = f"Valid relation names: {rel_names_list}\nUse the EXACT relation name string from this list."
+        output_constraint = f"Valid relation names: {rel_names_list}\nUse EXACT relation name strings. Use head_id/tail_id (integer indices) instead of entity names. Include evidence sentence indices."
     
     elif dataset == "cord":
         task_desc = "receipt/invoice information extraction. Extract structured purchase information."
@@ -1078,7 +1078,7 @@ Continue organization:
         docred_entity_section = ""
         if dataset == "docred" and entity_list:
             docred_entity_section = f"""
-Entities (use ONLY these):
+Entities (use ONLY these, refer by index [i]):
 {entity_list}
 """
         
@@ -1094,12 +1094,13 @@ Instructions:
 2. Then output FINAL JSON starting with: {{"relations": [...]}}
 
 Format example:
-{{"relations": [{{"head": "IBM Research – Brazil", "relation": "P749", "tail": "IBM Research", "evidence": [0]}}]}}
+{{"relations": [{{"head_id": 0, "relation": "country", "tail_id": 5, "evidence": [0, 1]}}]}}
 
 Rules:
-- Use entities [0]-[15] only
-- Choose correct P-ID from relation list above
-- evidence: sentence indices from 0
+- head_id/tail_id must be integer indices from the entity list
+- relation must be an exact natural-language name from the valid list
+- evidence: list of sentence indices (0-based) supporting this relation
+- Only output relations with direct textual evidence
 
 Begin your analysis:
 """
@@ -1127,10 +1128,10 @@ def build_extraction_prompts_hierarchical(dataset: str, role: str, question: str
     
     # Dataset-specific instructions
     if dataset == "docred":
-        task_desc = "document-level relation extraction using natural-language relation names"
+        task_desc = "document-level relation extraction using entity indices and natural-language relation names"
         focus_areas = "named entities and their relationships"
         rel_names_list = ", ".join(f'"{name}"' for name in DOCRED_REL_MAP.values())
-        output_constraint = f"Valid relation names: {rel_names_list}\nUse the EXACT relation name string from this list."
+        output_constraint = f"Valid relation names: {rel_names_list}\nUse EXACT relation name strings. Use head_id/tail_id (integer indices) instead of entity names. Include evidence sentence indices."
     
     elif dataset == "cord":
         task_desc = "receipt/invoice extraction"
@@ -1212,7 +1213,7 @@ Partition 3 extraction:
         
         if dataset == "docred":
             docred_entity_section = f"""
-Entities (use ONLY these):
+Entities (use ONLY these, refer by index [i]):
 {entity_list}
 """
             user_prompt = f"""Task: {task_desc}
@@ -1227,12 +1228,13 @@ Instructions:
 2. Then output FINAL JSON starting with: {{"relations": [...]}}
 
 Format example:
-{{"relations": [{{"head": "IBM Research – Brazil", "relation": "P749", "tail": "IBM Research", "evidence": [0]}}]}}
+{{"relations": [{{"head_id": 0, "relation": "country", "tail_id": 5, "evidence": [0, 1]}}]}}
 
 Rules:
-- Use entities [0]-[15] only
-- Choose correct P-ID from relation list above
-- evidence: sentence indices from 0
+- head_id/tail_id must be integer indices from the entity list
+- relation must be an exact natural-language name from the valid list
+- evidence: list of sentence indices (0-based) supporting this relation
+- Only output relations with direct textual evidence
 
 You have latent info from all partitions. Begin your analysis:
 """
@@ -1673,7 +1675,7 @@ def build_lora_extraction_prompt(dataset: str, question: str, item: dict, args=N
     system_msg = "You are an expert document information extraction system. Extract structured information accurately and output valid JSON only."
     
     if dataset == "docred":
-        # 语义化关系名 — 与训练时格式一致
+        # 索引抽取 + 语义化关系名 — 与训练时格式一致
         rel_names_list = ", ".join(
             f'"{name}"' for name in DOCRED_REL_MAP.values()
         )
@@ -1682,17 +1684,19 @@ def build_lora_extraction_prompt(dataset: str, question: str, item: dict, args=N
 Entities in this document:
 {entity_list}
 
-Extract relations between the entities listed above. Use the exact natural-language relation names below.
+Extract relations between entities using their index numbers [i] from the list above.
+Use the exact natural-language relation names below.
 
 Valid relation names: {rel_names_list}
 
 Output JSON format:
-{{"relations": [{{"head": "Entity Name", "relation": "country", "tail": "Country Name", "evidence": [0, 1]}}]}}
+{{"relations": [{{"head_id": 0, "relation": "country", "tail_id": 5, "evidence": [0, 1]}}]}}
 
 Rules:
-1. head/tail must be entity names from the entity list above
+1. head_id/tail_id must be integer indices from the entity list above (e.g. 0, 1, 2...)
 2. relation must be one of the valid relation names listed above (use the exact string)
-3. evidence is list of sentence indices (0-based) that support this relation"""
+3. evidence MUST be a non-empty list of sentence indices (0-based) that support this relation
+4. Only output relations you can find direct evidence for in the text"""
     
     elif dataset == "funsd":
         instruction = """Task: Extract form fields and their semantic relationships.

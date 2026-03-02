@@ -67,16 +67,44 @@ def _normalize_relation(rel: str) -> str:
     return rel
 
 
+def _resolve_entity(r: dict, vertex_set: list) -> tuple:
+    """从关系dict中解析出 (head_name, tail_name)，支持索引和名字两种格式"""
+    # 优先使用索引格式 (head_id / tail_id)
+    head_id = r.get("head_id")
+    tail_id = r.get("tail_id")
+    if head_id is not None and tail_id is not None:
+        try:
+            head_id = int(head_id)
+            tail_id = int(tail_id)
+        except (ValueError, TypeError):
+            head_id = tail_id = None
+    
+    if head_id is not None and tail_id is not None and vertex_set:
+        head = ""
+        tail = ""
+        if 0 <= head_id < len(vertex_set) and vertex_set[head_id]:
+            head = vertex_set[head_id][0].get("name", "")
+        if 0 <= tail_id < len(vertex_set) and vertex_set[tail_id]:
+            tail = vertex_set[tail_id][0].get("name", "")
+        return normalize_entity_name(head), normalize_entity_name(tail)
+    
+    # Fallback: 名字格式 (head / tail)
+    head = normalize_entity_name(r.get("head", ""))
+    tail = normalize_entity_name(r.get("tail", ""))
+    return head, tail
+
+
 def evaluate_docred(predictions: List[Dict], golds: List[Dict]) -> Dict[str, float]:
     """
     评估 DocRED 关系抽取
     
     Metrics: Precision, Recall, F1 for relation triplets
     支持:
-    1. 实体名称模糊匹配(忽略大小写)
-    2. 从模型输出中智能提取JSON
-    3. 自然语言关系名 ↔ P-ID 双向匹配
-    4. 分别统计每个关系类型的性能
+    1. 索引抽取 (head_id/tail_id) 和名字抽取 (head/tail) 双模式
+    2. 实体名称模糊匹配(忽略大小写)
+    3. 从模型输出中智能提取JSON
+    4. 自然语言关系名 ↔ P-ID 双向匹配
+    5. 分别统计每个关系类型的性能
     """
     pred_relations = []
     gold_relations = []
@@ -85,6 +113,13 @@ def evaluate_docred(predictions: List[Dict], golds: List[Dict]) -> Dict[str, flo
     relation_stats = defaultdict(lambda: {"tp": 0, "fp": 0, "fn": 0})
     
     for pred, gold in zip(predictions, golds):
+        # 获取 vertex_set 用于索引→名字解析
+        vertex_set = []
+        if isinstance(gold, dict):
+            vertex_set = gold.get("vertex_set", [])
+        if not vertex_set and isinstance(pred, dict):
+            vertex_set = pred.get("vertex_set", [])
+        
         # 解析预测结果
         try:
             pred_text = pred.get("prediction", "")
@@ -92,8 +127,7 @@ def evaluate_docred(predictions: List[Dict], golds: List[Dict]) -> Dict[str, flo
             pred_rels = pred_data.get("relations", [])
             
             for r in pred_rels:
-                head = normalize_entity_name(r.get("head", ""))
-                tail = normalize_entity_name(r.get("tail", ""))
+                head, tail = _resolve_entity(r, vertex_set)
                 rel = _normalize_relation(r.get("relation", ""))
                 if head and tail and rel:
                     pred_relations.append((head, rel, tail))
@@ -107,8 +141,7 @@ def evaluate_docred(predictions: List[Dict], golds: List[Dict]) -> Dict[str, flo
             gold_rels = gold_data.get("relations", []) if isinstance(gold_data, dict) else []
             
             for r in gold_rels:
-                head = normalize_entity_name(r.get("head", ""))
-                tail = normalize_entity_name(r.get("tail", ""))
+                head, tail = _resolve_entity(r, vertex_set)
                 rel = _normalize_relation(r.get("relation", ""))
                 if head and tail and rel:
                     gold_relations.append((head, rel, tail))

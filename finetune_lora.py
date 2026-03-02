@@ -84,20 +84,40 @@ Output:
 }"""
         
         elif self.task == "docred":
-            # DocRED: 语义化关系名 — 将 P-ID 替换为自然语言名称
+            # DocRED: 索引抽取 + 语义化关系名 + Evidence CoT
             # 构建可用关系列表（自然语言）
             rel_names_list = ", ".join(
                 f'"{name}"' for name in DOCRED_REL_MAP.values()
             )
             
-            # 将 gold 中的 P-ID 转为自然语言关系名
+            # 将 gold 转为索引格式 + 语义关系名 + 保留 evidence
             try:
                 gold_data = json.loads(gold) if isinstance(gold, str) else gold
                 if isinstance(gold_data, dict) and "relations" in gold_data:
+                    # 构建实体名→索引的反向映射（包含所有别名）
+                    vertex_set = item.get("vertex_set", [])
+                    name_to_idx = {}
+                    for vidx, mentions in enumerate(vertex_set):
+                        if mentions:
+                            for m in mentions:
+                                name_to_idx[m.get("name", "")] = vidx
+                    
+                    new_relations = []
                     for r in gold_data["relations"]:
                         pid = r.get("relation", "")
-                        if pid in DOCRED_REL_MAP:
-                            r["relation"] = DOCRED_REL_MAP[pid]
+                        rel_name = DOCRED_REL_MAP.get(pid, pid)
+                        head_name = r.get("head", "")
+                        tail_name = r.get("tail", "")
+                        head_id = name_to_idx.get(head_name, -1)
+                        tail_id = name_to_idx.get(tail_name, -1)
+                        if head_id >= 0 and tail_id >= 0:
+                            new_relations.append({
+                                "head_id": head_id,
+                                "relation": rel_name,
+                                "tail_id": tail_id,
+                                "evidence": r.get("evidence", [])
+                            })
+                    gold_data["relations"] = new_relations
                     gold = json.dumps(gold_data, ensure_ascii=False)
             except (json.JSONDecodeError, TypeError):
                 pass
@@ -107,17 +127,19 @@ Output:
 Entities in this document:
 {entity_list}
 
-Extract relations between the entities listed above. Use the exact natural-language relation names below.
+Extract relations between entities using their index numbers [i] from the list above.
+Use the exact natural-language relation names below.
 
 Valid relation names: {rel_names_list}
 
 Output JSON format:
-{{"relations": [{{"head": "Entity Name", "relation": "country", "tail": "Country Name", "evidence": [0, 1]}}]}}
+{{"relations": [{{"head_id": 0, "relation": "country", "tail_id": 5, "evidence": [0, 1]}}]}}
 
 Rules:
-1. head/tail must be entity names from the entity list above
+1. head_id/tail_id must be integer indices from the entity list above (e.g. 0, 1, 2...)
 2. relation must be one of the valid relation names listed above (use the exact string)
-3. evidence is list of sentence indices (0-based) that support this relation"""
+3. evidence MUST be a non-empty list of sentence indices (0-based) that support this relation
+4. Only output relations you can find direct evidence for in the text"""
         
         elif self.task == "cord":
             instruction = """Task: Extract receipt/invoice information from OCR text.
@@ -359,12 +381,12 @@ def main():
     parser.add_argument("--annotations_dir", type=str, default=None)
     parser.add_argument("--image_dir", type=str, default=None)
     parser.add_argument("--output_dir", type=str, required=True)
-    parser.add_argument("--epochs", type=int, default=3)
+    parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=4)
-    parser.add_argument("--learning_rate", type=float, default=2e-4)
-    parser.add_argument("--lora_r", type=int, default=16)
-    parser.add_argument("--lora_alpha", type=int, default=32)
+    parser.add_argument("--learning_rate", type=float, default=1e-4)
+    parser.add_argument("--lora_r", type=int, default=64)
+    parser.add_argument("--lora_alpha", type=int, default=128)
     parser.add_argument("--lora_dropout", type=float, default=0.05)
     parser.add_argument("--max_train_samples", type=int, default=None, help="Maximum number of training samples (use all if not specified)")
     parser.add_argument("--use_vision_model", action="store_true", help="Use vision-language model (auto-detect if not specified)")

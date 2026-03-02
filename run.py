@@ -47,6 +47,8 @@ _EXTRACTION_TASKS = {"docred", "cord", "funsd", "finer"}
 
 def _resolve_extraction_mode(args) -> str:
     """Determine extraction mode from args."""
+    if args.extraction_mode == "full":
+        return "full"
     if args.prompt == "hierarchical" and args.extraction_mode == "partitioned":
         return "partitioned"
     return "chunks"
@@ -121,6 +123,9 @@ def process_batch(
         results = results[:remaining]
     batch_start = processed
     for offset, res in enumerate(results):
+        # 将原始数据中的 vertex_set 透传到预测结果，供评估时索引→名字解析
+        if "vertex_set" in current_batch[offset]:
+            res["vertex_set"] = current_batch[offset]["vertex_set"]
         preds.append(res)
         problem_idx = batch_start + offset + 1
         print(f"\n==================== Problem #{problem_idx} ====================")
@@ -168,8 +173,8 @@ def main():
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--split", type=str, default="test")
     parser.add_argument("--doc_path", type=str, default=None, help="Path to document file (for docred/cord/funsd/finer tasks)")
-    parser.add_argument("--extraction_mode", type=str, choices=["chunks", "partitioned"], default="chunks", 
-                        help="Document processing mode: 'chunks' for sequential, 'partitioned' for hierarchical")
+    parser.add_argument("--extraction_mode", type=str, choices=["full", "chunks", "partitioned"], default="full", 
+                        help="Document processing mode: 'full' (recommended for DocRED), 'chunks' for sequential, 'partitioned' for hierarchical")
     parser.add_argument("--chunk_size", type=int, default=3000, help="Characters per chunk for extraction tasks")
     parser.add_argument("--chunk_overlap", type=int, default=300, help="Overlap between chunks")
     parser.add_argument("--num_partitions", type=int, default=3, help="Number of partitions for hierarchical extraction")
@@ -184,8 +189,8 @@ def main():
 
     parser.add_argument("--max_new_tokens", type=int, default=4096)
     parser.add_argument("--latent_steps", type=int, default=0, help="Number of latent steps for LatentMAS method")
-    parser.add_argument("--temperature", type=float, default=0.6)
-    parser.add_argument("--top_p", type=float, default=0.95)
+    parser.add_argument("--temperature", type=float, default=0.1)
+    parser.add_argument("--top_p", type=float, default=0.9)
     parser.add_argument("--generate_bs", type=int, default=20, help="Batch size for generation")
     parser.add_argument("--text_mas_context_length", type=int, default=-1, help="TextMAS context length limit")
     parser.add_argument("--think", action="store_true", help="Manually add think token in the prompt for LatentMAS")
