@@ -114,8 +114,8 @@ Output:
                             new_relations.append({
                                 "head_id": head_id,
                                 "relation": rel_name,
-                                "tail_id": tail_id,
-                                "evidence": r.get("evidence", [])
+                                "tail_id": tail_id
+                                # evidence 已移除：句子未编号，强求 evidence 反而诱发幻觉
                             })
                     gold_data["relations"] = new_relations
                     gold = json.dumps(gold_data, ensure_ascii=False)
@@ -133,13 +133,11 @@ Use the exact natural-language relation names below.
 Valid relation names: {rel_names_list}
 
 Output JSON format:
-{{"relations": [{{"head_id": 0, "relation": "country", "tail_id": 5, "evidence": [0, 1]}}]}}
+{{"relations": [{{"head_id": 0, "relation": "country", "tail_id": 5}}]}}
 
 Rules:
 1. head_id/tail_id must be integer indices from the entity list above (e.g. 0, 1, 2...)
-2. relation must be one of the valid relation names listed above (use the exact string)
-3. evidence MUST be a non-empty list of sentence indices (0-based) that support this relation
-4. Only output relations you can find direct evidence for in the text"""
+2. relation must be one of the valid relation names listed above (use the exact string)"""
         
         elif self.task == "cord":
             instruction = """Task: Extract receipt/invoice information from OCR text.
@@ -260,15 +258,20 @@ Output: {"entities": [{"text": "Apple", "type": "ORG", "start": 0, "end": 5}, {"
             labels[labels == pad_token_id] = -100
         
         # 找到 assistant 回复的起始位置，将之前所有 token 的 label 设为 -100
-        # 这样模型只在生成回复部分计算 loss，避免在指令和文档内容上过拟合
+        # 使用严格的完整序列匹配，避免文档内容中偶发的 "assistant" 字词干扰掩码位置
         assistant_token_ids = tokenizer.encode("<|im_start|>assistant", add_special_tokens=False)
         if assistant_token_ids:
-            assistant_start_token = assistant_token_ids[-1]
-            # 寻找 assistant 标记在序列中的位置
-            matches = (input_ids == assistant_start_token).nonzero(as_tuple=True)[0]
-            if len(matches) > 0:
-                # 取最后一个匹配（对应 assistant 回复），+2 跳过紧跟的 "\n"
-                start_idx = matches[-1].item() + 2
+            seq_len = len(assistant_token_ids)
+            match_idx = -1
+            tgt = torch.tensor(assistant_token_ids, device=input_ids.device)
+            # 从后往前遍历，找最后一次出现完整序列的位置
+            for i in range(len(input_ids) - seq_len, -1, -1):
+                if torch.equal(input_ids[i:i + seq_len], tgt):
+                    match_idx = i + seq_len
+                    break
+            if match_idx != -1:
+                # +1 跳过紧跟的换行符 \n
+                start_idx = match_idx + 1
                 labels[:start_idx] = -100
         
         result = {
