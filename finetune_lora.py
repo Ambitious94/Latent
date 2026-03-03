@@ -136,8 +136,11 @@ Output JSON format:
 {{"relations": [{{"head_id": 0, "relation": "country", "tail_id": 5}}]}}
 
 Rules:
-1. head_id/tail_id must be integer indices from the entity list above (e.g. 0, 1, 2...)
-2. relation must be one of the valid relation names listed above (use the exact string)"""
+1. head_id must be the SUBJECT (the entity performing the action or being described).
+2. tail_id must be the OBJECT (the target entity of the relation).
+3. head_id/tail_id must be integer indices from the entity list above (e.g. 0, 1, 2...).
+4. relation must be one of the valid relation names listed above (use the exact string).
+Output the JSON directly with no explanation."""
         
         elif self.task == "cord":
             instruction = """Task: Extract receipt/invoice information from OCR text.
@@ -384,10 +387,10 @@ def main():
     parser.add_argument("--annotations_dir", type=str, default=None)
     parser.add_argument("--image_dir", type=str, default=None)
     parser.add_argument("--output_dir", type=str, required=True)
-    parser.add_argument("--epochs", type=int, default=5)
+    parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=4)
-    parser.add_argument("--learning_rate", type=float, default=1e-4)
+    parser.add_argument("--learning_rate", type=float, default=5e-5)
     parser.add_argument("--lora_r", type=int, default=64)
     parser.add_argument("--lora_alpha", type=int, default=128)
     parser.add_argument("--lora_dropout", type=float, default=0.05)

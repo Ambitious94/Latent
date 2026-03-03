@@ -1032,7 +1032,27 @@ Begin scanning:
 """
     
     elif role == "critic":
-        user_prompt = f"""You are a Document Validator Agent (Phase 2: Cross-Verification).
+        if dataset == "docred":
+            user_prompt = f"""You are a Document Validator Agent (Phase 2: Cross-Verification).
+
+Task: {task_desc}
+
+You have latent information from the previous scanning phase.
+
+Document Section {chunk_info}:
+{question}
+
+Instructions:
+- Cross-check every extracted relation against the document text.
+- CRITICAL: Verify the DIRECTION of each relation — head_id is the SUBJECT (performing/described), tail_id is the OBJECT (target). Flag and correct any reversed relations.
+- Verify that all head_id/tail_id values are valid indices from the entity list; remove any out-of-range indices.
+- Remove hallucinated relations that are NOT explicitly stated in the text.
+- Refine latent representation (do NOT output final JSON yet)
+
+Continue verification:
+"""
+        else:
+            user_prompt = f"""You are a Document Validator Agent (Phase 2: Cross-Verification).
 
 Task: {task_desc}
 
@@ -1081,25 +1101,38 @@ Entities (use ONLY these, refer by index [i]):
 {entity_list}
 """
         
-        user_prompt = f"""Task: {task_desc}
+        if dataset == "docred":
+            user_prompt = f"""Task: {task_desc}
 
 {docred_entity_section}Document:
 {question}
 
 {output_constraint}
 
-Instructions:
-1. First, analyze the document and reason about relationships (write your thinking)
-2. Then output FINAL JSON starting with: {{"relations": [...]}}
+Output the extracted relationships DIRECTLY in JSON format. Do not include any explanations or thinking process.
 
-Format example:
+Format:
 {{"relations": [{{"head_id": 0, "relation": "country", "tail_id": 5}}]}}
 
 Rules:
-- head_id/tail_id must be integer indices from the entity list
+- head_id is the SUBJECT entity index (performing the action or being described)
+- tail_id is the OBJECT entity index (the target of the relation)
 - relation must be an exact natural-language name from the valid list
+- Only include relations explicitly supported by the document text
+"""
+        else:
+            user_prompt = f"""Task: {task_desc}
 
-Begin your analysis:
+Document:
+{question}
+
+{output_constraint}
+
+Instructions:
+1. Synthesize all findings from previous agents
+2. Output FINAL JSON that fills the extraction schema completely
+
+Output the extracted information as JSON:
 """
     
     return [
@@ -1220,18 +1253,18 @@ Entities (use ONLY these, refer by index [i]):
 
 {output_constraint}
 
-Instructions:
-1. First, analyze the document and reason about relationships (write your thinking)
-2. Then output FINAL JSON starting with: {{"relations": [...]}}
+Output the extracted relationships DIRECTLY in JSON format. Do not include any explanations or thinking process.
 
-Format example:
+Format:
 {{"relations": [{{"head_id": 0, "relation": "country", "tail_id": 5}}]}}
 
 Rules:
-- head_id/tail_id must be integer indices from the entity list
+- head_id is the SUBJECT entity index (performing the action or being described)
+- tail_id is the OBJECT entity index (the target of the relation)
 - relation must be an exact natural-language name from the valid list
+- Only include relations explicitly supported by the document text
 
-You have latent info from all partitions. Begin your analysis:
+You have latent info from all partitions. Output JSON now:
 """
         elif dataset == "funsd":
             user_prompt = f"""Task: {task_desc}
@@ -1688,8 +1721,11 @@ Output JSON format:
 {{"relations": [{{"head_id": 0, "relation": "country", "tail_id": 5}}]}}
 
 Rules:
-1. head_id/tail_id must be integer indices from the entity list above (e.g. 0, 1, 2...)
-2. relation must be one of the valid relation names listed above (use the exact string)"""
+1. head_id must be the SUBJECT (the entity performing the action or being described).
+2. tail_id must be the OBJECT (the target entity of the relation).
+3. head_id/tail_id must be integer indices from the entity list above (e.g. 0, 1, 2...).
+4. relation must be one of the valid relation names listed above (use the exact string).
+Output the JSON directly with no explanation."""
     
     elif dataset == "funsd":
         instruction = """Task: Extract form fields and their semantic relationships.
