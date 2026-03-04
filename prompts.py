@@ -1110,8 +1110,7 @@ Entities (use ONLY these, refer by index [i]):
 
 {output_constraint}
 
-First, output your reasoning process inside <think>...</think> tags.
-Then, output the extracted relationships in JSON format.
+Output the extracted relationships DIRECTLY in JSON format. Do not include any explanations or thinking process.
 
 Format:
 {{"relations": [{{"head_id": 0, "relation": "country", "tail_id": 5}}]}}
@@ -1122,6 +1121,7 @@ Rules:
 - relation must be an exact natural-language name from the valid list
 - STRICT ANTI-HALLUCINATION: Do NOT use external knowledge or common sense (e.g., geography, history). Only extract relations EXPLICITLY STATED in the document text.
 - AVOID REDUNDANCY: Do not output multiple synonymous relations for the same entity pair.
+- INVERSE RELATIONS: If a relation logically implies its inverse (e.g., "parent organization" vs "subsidiary", "contains" vs "located in"), you MUST extract BOTH directions as separate relations if supported by the document text.
 """
         else:
             user_prompt = f"""Task: {task_desc}
@@ -1256,8 +1256,7 @@ Entities (use ONLY these, refer by index [i]):
 
 {output_constraint}
 
-First, output your reasoning process inside <think>...</think> tags.
-Then, output the extracted relationships in JSON format.
+Output the extracted relationships DIRECTLY in JSON format. Do not include any explanations or thinking process.
 
 Format:
 {{"relations": [{{"head_id": 0, "relation": "country", "tail_id": 5}}]}}
@@ -1268,8 +1267,9 @@ Rules:
 - relation must be an exact natural-language name from the valid list
 - STRICT ANTI-HALLUCINATION: Do NOT use external knowledge or common sense (e.g., geography, history). Only extract relations EXPLICITLY STATED in the document text.
 - AVOID REDUNDANCY: Do not output multiple synonymous relations for the same entity pair.
+- INVERSE RELATIONS: If a relation logically implies its inverse (e.g., "parent organization" vs "subsidiary", "contains" vs "located in"), you MUST extract BOTH directions as separate relations if supported by the document text.
 
-You have latent info from all partitions. Output your reasoning then JSON now:
+You have latent info from all partitions. Output JSON now:
 """
         elif dataset == "funsd":
             user_prompt = f"""Task: {task_desc}
