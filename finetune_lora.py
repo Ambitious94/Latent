@@ -218,8 +218,11 @@ Output: {"entities": [{"text": "Apple", "type": "ORG", "start": 0, "end": 5}, {"
         
         # 使用processor处理
         if hasattr(self.processor, 'apply_chat_template'):
-            # Qwen系列模型支持chat template
+            # 1. 完整对话 (用于训练)
             text = self.processor.apply_chat_template(messages, tokenize=False)
+            # 2. 仅 Prompt (用于计算掩码长度，add_generation_prompt=True 会自动加上 <|im_start|>assistant\n)
+            prompt_messages = messages[:-1]
+            prompt_text = self.processor.apply_chat_template(prompt_messages, tokenize=False, add_generation_prompt=True)
         else:
             # Fallback：手动构建文本
             text = ""
@@ -229,66 +232,57 @@ Output: {"entities": [{"text": "Apple", "type": "ORG", "start": 0, "end": 5}, {"
                 else:
                     text += msg["content"]
                 text += "\n"
-        
+            prompt_text = text[:text.rfind(gold)]  # 粗略截取
+
+        # ⚠️ 提升 max_length 到 4096，防止较长文档的 JSON 标签被截断
+        MAX_LEN = 4096
+
         if image:
+            # 编码完整文本
             inputs = self.processor(
-                text=[text],
-                images=[image],
-                return_tensors="pt",
-                padding=False,
-                truncation=True,
-                max_length=2048,
+                text=[text], images=[image], return_tensors="pt", padding=False, truncation=True, max_length=MAX_LEN
+            )
+            # 编码 Prompt 仅用于获取长度 (传入 image 确保视觉 token 占位准确)
+            prompt_inputs = self.processor(
+                text=[prompt_text], images=[image], return_tensors="pt", padding=False, truncation=True, max_length=MAX_LEN
             )
         else:
             inputs = self.processor(
-                text=[text],
-                return_tensors="pt",
-                padding=False,
-                truncation=True,
-                max_length=2048,
+                text=[text], return_tensors="pt", padding=False, truncation=True, max_length=MAX_LEN
             )
-        
-        # 创建labels：只在 assistant 回复部分计算 loss
+            prompt_inputs = self.processor(
+                text=[prompt_text], return_tensors="pt", padding=False, truncation=True, max_length=MAX_LEN
+            )
+
+        # 获取 Prompt 的准确 Token 长度
+        prompt_len = prompt_inputs["input_ids"].shape[1]
+
         input_ids = inputs["input_ids"].squeeze(0)
         attention_mask = inputs["attention_mask"].squeeze(0)
-        
-        tokenizer = getattr(self.processor, 'tokenizer', self.processor)
         labels = input_ids.clone()
-        
-        # Mask padding tokens
+
+        tokenizer = getattr(self.processor, 'tokenizer', self.processor)
         pad_token_id = tokenizer.pad_token_id
         if pad_token_id is not None:
             labels[labels == pad_token_id] = -100
-        
-        # 找到 assistant 回复的起始位置，将之前所有 token 的 label 设为 -100
-        # 使用严格的完整序列匹配，避免文档内容中偶发的 "assistant" 字词干扰掩码位置
-        assistant_token_ids = tokenizer.encode("<|im_start|>assistant", add_special_tokens=False)
-        if assistant_token_ids:
-            seq_len = len(assistant_token_ids)
-            match_idx = -1
-            tgt = torch.tensor(assistant_token_ids, device=input_ids.device)
-            # 从后往前遍历，找最后一次出现完整序列的位置
-            for i in range(len(input_ids) - seq_len, -1, -1):
-                if torch.equal(input_ids[i:i + seq_len], tgt):
-                    match_idx = i + seq_len
-                    break
-            if match_idx != -1:
-                # +1 跳过紧跟的换行符 \n
-                start_idx = match_idx + 1
-                labels[:start_idx] = -100
-        
+
+        # 【完美掩码】：将 prompt_len 之前的所有 token 的 label 设为 -100
+        # 使用 min 保护防止被截断导致的越界
+        mask_len = min(prompt_len, labels.shape[0])
+        labels[:mask_len] = -100
+
         result = {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
             "labels": labels,
         }
-        
+
         # 只有VL模型才有pixel_values
         if "pixel_values" in inputs:
             result["pixel_values"] = inputs["pixel_values"].squeeze(0)
         if "image_grid_thw" in inputs:
             result["image_grid_thw"] = inputs["image_grid_thw"].squeeze(0)
-        
+
         return result
 
 
