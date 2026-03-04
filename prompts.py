@@ -976,7 +976,7 @@ def build_extraction_prompts_sequential(dataset: str, role: str, question: str, 
     """
     import json
     
-    system_message = "You are Qwen, created by Alibaba Cloud. You are a document information extraction specialist. When asked to extract, output ONLY valid JSON without any thinking process or explanatory text."
+    system_message = "You are Qwen, created by Alibaba Cloud. You are a document information extraction specialist. Think carefully before producing your final answer."
     
     assert method in ["latent_mas"], "this prompt only for latent_mas method"
     assert "qwen" in args.model_name.lower(), "this prompt only for qwen models"
@@ -1025,7 +1025,8 @@ Instructions:
 - Carefully read the document section
 - Identify ALL relevant information: {focus_areas}
 - Note context and relationships between information elements
-- Store findings in latent format (do NOT output final JSON yet)
+- Write down your detailed step-by-step analysis and findings.
+- Explain your reasoning explicitly.
 - Be thorough and precise
 
 Begin scanning:
@@ -1047,7 +1048,7 @@ Instructions:
 - CRITICAL: Verify the DIRECTION of each relation — head_id is the SUBJECT (performing/described), tail_id is the OBJECT (target). Flag and correct any reversed relations.
 - Verify that all head_id/tail_id values are valid indices from the entity list; remove any out-of-range indices.
 - Remove hallucinated relations that are NOT explicitly stated in the text.
-- Refine latent representation (do NOT output final JSON yet)
+- Write down your detailed verification findings. Explain your reasoning explicitly.
 
 Continue verification:
 """
@@ -1066,7 +1067,7 @@ Instructions:
 - Verify accuracy of: {focus_areas}
 - Identify any missing or ambiguous information
 - Resolve inconsistencies
-- Refine latent representation (do NOT output final JSON yet)
+- Write down your detailed verification findings. Explain your reasoning explicitly.
 
 Continue verification:
 """
@@ -1084,9 +1085,9 @@ Document Section {chunk_info}:
 Instructions:
 - Organize all extracted information logically
 - Resolve any conflicts between different document sections
-- Prepare comprehensive latent summary
+- Prepare a comprehensive summary of all findings
 - Focus on: {focus_areas}
-- Refine latent representation (do NOT output final JSON yet)
+- Write down your detailed organization process. Explain your reasoning explicitly.
 
 Continue organization:
 """
@@ -1109,7 +1110,8 @@ Entities (use ONLY these, refer by index [i]):
 
 {output_constraint}
 
-Output the extracted relationships DIRECTLY in JSON format. Do not include any explanations or thinking process.
+First, output your reasoning process inside <think>...</think> tags.
+Then, output the extracted relationships in JSON format.
 
 Format:
 {{"relations": [{{"head_id": 0, "relation": "country", "tail_id": 5}}]}}
@@ -1118,7 +1120,8 @@ Rules:
 - head_id is the SUBJECT entity index (performing the action or being described)
 - tail_id is the OBJECT entity index (the target of the relation)
 - relation must be an exact natural-language name from the valid list
-- Only include relations explicitly supported by the document text
+- STRICT ANTI-HALLUCINATION: Do NOT use external knowledge or common sense (e.g., geography, history). Only extract relations EXPLICITLY STATED in the document text.
+- AVOID REDUNDANCY: Do not output multiple synonymous relations for the same entity pair.
 """
         else:
             user_prompt = f"""Task: {task_desc}
@@ -1147,7 +1150,7 @@ def build_extraction_prompts_hierarchical(dataset: str, role: str, question: str
     """
     import json
     
-    system_message = "You are Qwen, created by Alibaba Cloud. You are a document information extraction specialist. When asked to extract, output ONLY valid JSON without any thinking process or explanatory text."
+    system_message = "You are Qwen, created by Alibaba Cloud. You are a document information extraction specialist. Think carefully before producing your final answer."
     
     assert method in ["latent_mas"], "this prompt only for latent_mas method"
     assert "qwen" in args.model_name.lower(), "this prompt only for qwen models"
@@ -1196,7 +1199,7 @@ Document Content:
 Instructions:
 - Extract ALL {focus_areas} from this partition only
 - Be thorough and accurate
-- Store in latent format (no final output yet)
+- Write down your detailed step-by-step analysis and findings. Explain your reasoning explicitly.
 
 Partition 1 extraction:
 """
@@ -1214,7 +1217,7 @@ Document Content:
 Instructions:
 - Extract ALL {focus_areas} from this partition only
 - Be thorough and accurate
-- Store in latent format (no final output yet)
+- Write down your detailed step-by-step analysis and findings. Explain your reasoning explicitly.
 
 Partition 2 extraction:
 """
@@ -1232,7 +1235,7 @@ Document Content:
 Instructions:
 - Extract ALL {focus_areas} from this partition only
 - Be thorough and accurate
-- Store in latent format (no final output yet)
+- Write down your detailed step-by-step analysis and findings. Explain your reasoning explicitly.
 
 Partition 3 extraction:
 """
@@ -1253,7 +1256,8 @@ Entities (use ONLY these, refer by index [i]):
 
 {output_constraint}
 
-Output the extracted relationships DIRECTLY in JSON format. Do not include any explanations or thinking process.
+First, output your reasoning process inside <think>...</think> tags.
+Then, output the extracted relationships in JSON format.
 
 Format:
 {{"relations": [{{"head_id": 0, "relation": "country", "tail_id": 5}}]}}
@@ -1262,9 +1266,10 @@ Rules:
 - head_id is the SUBJECT entity index (performing the action or being described)
 - tail_id is the OBJECT entity index (the target of the relation)
 - relation must be an exact natural-language name from the valid list
-- Only include relations explicitly supported by the document text
+- STRICT ANTI-HALLUCINATION: Do NOT use external knowledge or common sense (e.g., geography, history). Only extract relations EXPLICITLY STATED in the document text.
+- AVOID REDUNDANCY: Do not output multiple synonymous relations for the same entity pair.
 
-You have latent info from all partitions. Output JSON now:
+You have latent info from all partitions. Output your reasoning then JSON now:
 """
         elif dataset == "funsd":
             user_prompt = f"""Task: {task_desc}
