@@ -976,7 +976,7 @@ def build_extraction_prompts_sequential(dataset: str, role: str, question: str, 
     """
     import json
     
-    system_message = "You are Qwen, created by Alibaba Cloud. You are a document information extraction specialist. Think carefully before producing your final answer."
+    system_message = "You are Qwen, created by Alibaba Cloud. You are a document information extraction specialist."
     
     assert method in ["latent_mas"], "this prompt only for latent_mas method"
     assert "qwen" in args.model_name.lower(), "this prompt only for qwen models"
@@ -1116,12 +1116,9 @@ Format:
 {{"relations": [{{"head_id": 0, "relation": "country", "tail_id": 5}}]}}
 
 Rules:
-- head_id is the SUBJECT entity index (performing the action or being described)
-- tail_id is the OBJECT entity index (the target of the relation)
-- relation must be an exact natural-language name from the valid list
-- STRICT ANTI-HALLUCINATION: Do NOT use external knowledge or common sense (e.g., geography, history). Only extract relations EXPLICITLY STATED in the document text.
-- AVOID REDUNDANCY: Do not output multiple synonymous relations for the same entity pair.
-- For companies/organizations, prefer "parent organization" or "subsidiary" over "part of".
+- head_id is the SUBJECT entity index (e.g. 0, 1, 2...).
+- tail_id is the OBJECT entity index.
+- relation must be an exact natural-language name from the valid list.
 """
         else:
             user_prompt = f"""Task: {task_desc}
@@ -1150,7 +1147,7 @@ def build_extraction_prompts_hierarchical(dataset: str, role: str, question: str
     """
     import json
     
-    system_message = "You are Qwen, created by Alibaba Cloud. You are a document information extraction specialist. Think carefully before producing your final answer."
+    system_message = "You are Qwen, created by Alibaba Cloud. You are a document information extraction specialist."
     
     assert method in ["latent_mas"], "this prompt only for latent_mas method"
     assert "qwen" in args.model_name.lower(), "this prompt only for qwen models"
@@ -1262,12 +1259,9 @@ Format:
 {{"relations": [{{"head_id": 0, "relation": "country", "tail_id": 5}}]}}
 
 Rules:
-- head_id is the SUBJECT entity index (performing the action or being described)
-- tail_id is the OBJECT entity index (the target of the relation)
-- relation must be an exact natural-language name from the valid list
-- STRICT ANTI-HALLUCINATION: Do NOT use external knowledge or common sense (e.g., geography, history). Only extract relations EXPLICITLY STATED in the document text.
-- AVOID REDUNDANCY: Do not output multiple synonymous relations for the same entity pair.
-- For companies/organizations, prefer "parent organization" or "subsidiary" over "part of".
+- head_id is the SUBJECT entity index (e.g. 0, 1, 2...).
+- tail_id is the OBJECT entity index.
+- relation must be an exact natural-language name from the valid list.
 
 You have latent info from all partitions. Output JSON now:
 """
