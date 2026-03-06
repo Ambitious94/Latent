@@ -1121,7 +1121,7 @@ Rules:
 - relation must be an exact natural-language name from the valid list
 - STRICT ANTI-HALLUCINATION: Do NOT use external knowledge or common sense (e.g., geography, history). Only extract relations EXPLICITLY STATED in the document text.
 - AVOID REDUNDANCY: Do not output multiple synonymous relations for the same entity pair.
-- INVERSE RELATIONS: If a relation logically implies its inverse (e.g., "parent organization" vs "subsidiary", "contains" vs "located in"), you MUST extract BOTH directions as separate relations if supported by the document text.
+- For companies/organizations, prefer "parent organization" or "subsidiary" over "part of".
 """
         else:
             user_prompt = f"""Task: {task_desc}
@@ -1267,7 +1267,7 @@ Rules:
 - relation must be an exact natural-language name from the valid list
 - STRICT ANTI-HALLUCINATION: Do NOT use external knowledge or common sense (e.g., geography, history). Only extract relations EXPLICITLY STATED in the document text.
 - AVOID REDUNDANCY: Do not output multiple synonymous relations for the same entity pair.
-- INVERSE RELATIONS: If a relation logically implies its inverse (e.g., "parent organization" vs "subsidiary", "contains" vs "located in"), you MUST extract BOTH directions as separate relations if supported by the document text.
+- For companies/organizations, prefer "parent organization" or "subsidiary" over "part of".
 
 You have latent info from all partitions. Output JSON now:
 """
