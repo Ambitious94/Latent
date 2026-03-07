@@ -317,6 +317,7 @@ def load_docred(
                 "gold": json.dumps(gold_output, ensure_ascii=False),
                 "extract_template": json.dumps(extract_template, ensure_ascii=False),
                 "dataset": "docred",
+                "title": doc.get("title", ""),
                 "vertex_set": vertex_set,
                 "raw_labels": raw_labels_for_eval,  # For official evaluation
             }
@@ -339,6 +340,7 @@ def load_docred(
                     "extract_template": json.dumps(extract_template, ensure_ascii=False),
                     "chunk_info": f"Chunk {i+1}/{len(chunks)}",
                     "dataset": "docred",
+                    "title": doc.get("title", ""),
                     "vertex_set": vertex_set,
                     "raw_labels": raw_labels_for_eval,
                 }
@@ -358,7 +360,9 @@ def load_docred(
                     "extract_template": json.dumps(extract_template, ensure_ascii=False),
                     "partition_info": f"Partition {i+1}/{num_partitions}",
                     "dataset": "docred",
+                    "title": doc.get("title", ""),
                     "vertex_set": vertex_set,
+                    "raw_labels": raw_labels_for_eval if 'raw_labels_for_eval' in dir() else [],
                 }
 
 

@@ -370,6 +370,66 @@ def evaluate_finer(predictions: List[Dict], golds: List[Dict]) -> Dict[str, floa
     }
 
 
+def convert_to_official_format(predictions: List[Dict]) -> List[Dict]:
+    """
+    将 LLM 输出的预测列表转换为 Re-DocRED 官方评测脚本所需的格式。
+
+    官方格式要求每条预测为：
+        {'title': <doc_title>, 'h_idx': <int>, 't_idx': <int>, 'r': <P-ID>}
+
+    :param predictions: run.py 收集的 preds 列表，每项包含 'prediction'/'title'/'vertex_set'
+    :return: 官方格式的预测列表
+    """
+    official_preds = []
+
+    for pred in predictions:
+        title = pred.get("title", "")
+        vertex_set = pred.get("vertex_set", [])
+
+        pred_text = pred.get("prediction", "")
+        pred_data = extract_json_from_text(pred_text)
+        relations = pred_data.get("relations", []) if isinstance(pred_data, dict) else []
+
+        for rel in relations:
+            h_idx = rel.get("head_id")
+            t_idx = rel.get("tail_id")
+            rel_name = rel.get("relation", "")
+
+            # 跳过缺少必要字段的项
+            if h_idx is None or t_idx is None or not rel_name:
+                continue
+
+            try:
+                h_idx = int(h_idx)
+                t_idx = int(t_idx)
+            except (ValueError, TypeError):
+                continue
+
+            # 索引越界检查
+            if vertex_set and (h_idx >= len(vertex_set) or t_idx >= len(vertex_set)):
+                continue
+
+            # 自然语言关系名 → P-ID
+            rel_name_lower = rel_name.lower().strip()
+            p_id = REL_NAME_TO_ID.get(rel_name_lower)
+            if not p_id:
+                # 尝试直接当作 P-ID 使用
+                import re as _re
+                if _re.match(r'^P\d+$', rel_name):
+                    p_id = rel_name
+            if not p_id:
+                continue
+
+            official_preds.append({
+                "title": title,
+                "h_idx": h_idx,
+                "t_idx": t_idx,
+                "r": p_id,
+            })
+
+    return official_preds
+
+
 def evaluate_extraction_task(task: str, predictions: List[Dict], golds: List[Dict]) -> Dict[str, float]:
     """
     统一评估接口

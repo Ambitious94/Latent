@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 from typing import Dict, List, Tuple
 
 from tqdm import tqdm
@@ -126,6 +127,11 @@ def process_batch(
         # 将原始数据中的 vertex_set 透传到预测结果，供评估时索引→名字解析
         if "vertex_set" in current_batch[offset]:
             res["vertex_set"] = current_batch[offset]["vertex_set"]
+        # 透传 title 和 raw_labels 用于官方评测脚本
+        if "title" in current_batch[offset]:
+            res["title"] = current_batch[offset]["title"]
+        if "raw_labels" in current_batch[offset]:
+            res["raw_labels"] = current_batch[offset]["raw_labels"]
         preds.append(res)
         problem_idx = batch_start + offset + 1
         print(f"\n==================== Problem #{problem_idx} ====================")
@@ -173,6 +179,7 @@ def main():
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--split", type=str, default="test")
     parser.add_argument("--doc_path", type=str, default=None, help="Path to document file (for docred/cord/funsd/finer tasks)")
+    parser.add_argument("--train_path", type=str, default="./data/train_annotated.json", help="Full path to train file for official Re-DocRED Ign-F1 evaluation")
     parser.add_argument("--extraction_mode", type=str, choices=["full", "chunks", "partitioned"], default="full", 
                         help="Document processing mode: 'full' (recommended for DocRED), 'chunks' for sequential, 'partitioned' for hierarchical")
     parser.add_argument("--chunk_size", type=int, default=3000, help="Characters per chunk for extraction tasks")
@@ -346,6 +353,42 @@ def main():
         
         # 打印详细结果
         print_evaluation_results(args.task, metrics)
+        
+        # DocRED 额外调用官方评测脚本（如果 evaluation.py 可用）
+        if args.task == "docred":
+            try:
+                from evaluate_extraction import convert_to_official_format
+                from evaluation import official_evaluate_benchmark
+                formatted_preds = convert_to_official_format(preds)
+                re_f1, evi_f1, re_f1_ign_ann, re_f1_ign, re_p, re_r, \
+                    re_f1_freq, re_f1_long_tail, re_f1_intra, re_f1_inter, \
+                    re_p_freq, re_r_freq, re_p_lt, re_r_lt = official_evaluate_benchmark(
+                    tmp=formatted_preds,
+                    path=os.path.dirname(os.path.abspath(args.doc_path)) if args.doc_path else "./data",
+                    train_file=os.path.abspath(args.train_path) if args.train_path else "train_annotated.json",
+                    dev_file=os.path.basename(args.doc_path) if args.doc_path else "dev.json",
+                )
+                print("\n" + "="*60)
+                print("📊 Re-DocRED Official Evaluation Results")
+                print("="*60)
+                print(f"  Overall  F1 : {re_f1 * 100:.2f}%  (P: {re_p * 100:.2f}%  R: {re_r * 100:.2f}%)")
+                print(f"  Ign-F1 (anno): {re_f1_ign_ann * 100:.2f}%")
+                print(f"  Ign-F1 (train): {re_f1_ign * 100:.2f}%")
+                print(f"  Intra-sent F1: {re_f1_intra * 100:.2f}%")
+                print(f"  Inter-sent F1: {re_f1_inter * 100:.2f}%")
+                print(f"  Freq  F1     : {re_f1_freq * 100:.2f}%  (P: {re_p_freq * 100:.2f}%  R: {re_r_freq * 100:.2f}%)")
+                print(f"  LongTail F1  : {re_f1_long_tail * 100:.2f}%  (P: {re_p_lt * 100:.2f}%  R: {re_r_lt * 100:.2f}%)")
+                print("="*60)
+                metrics["official_f1"] = re_f1
+                metrics["official_ign_f1_annotated"] = re_f1_ign_ann
+                metrics["official_ign_f1_train"] = re_f1_ign
+                metrics["official_intra_f1"] = re_f1_intra
+                metrics["official_inter_f1"] = re_f1_inter
+            except ImportError:
+                print("\n[INFO] evaluation.py not found — skipping official Re-DocRED benchmark.")
+                print("       Place evaluation.py in the project root to enable official scoring.")
+            except Exception as e:
+                print(f"\n[WARNING] Official evaluation failed: {e}")
         
         # 保存结果
         result_summary = {
