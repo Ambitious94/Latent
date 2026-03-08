@@ -1115,11 +1115,13 @@ Output the extracted relationships DIRECTLY in JSON format. Do not include any e
 Format:
 {{"relations": [{{"head_id": 0, "relation": "country", "tail_id": 5}}]}}
 
+Goal: MAXIMUM RECALL. Extract every valid relationship that can be logically inferred from the text. Pay special attention to implicit inter-sentence relations. Do not miss any valid connections, especially for long-tail entities.
+
 Rules:
 - head_id is the SUBJECT entity index (e.g. 0, 1, 2...).
 - tail_id is the OBJECT entity index.
 - relation must be an exact natural-language name from the valid list.
-- STRICT ANTI-HALLUCINATION: Do NOT use external knowledge or common sense (e.g., geography, history). Only extract relations EXPLICITLY STATED in the document text.
+- ANTI-HALLUCINATION: Do NOT fabricate relations using pure external common sense. Prefer text-grounded inference; implicit cross-sentence relations are valid.
 - INVERSE RELATIONS: If a relation logically implies its inverse (e.g., "parent organization" vs "subsidiary", "contains" vs "located in"), you MUST extract BOTH directions as separate relations if supported by the document text.
 - For companies/organizations, prefer "parent organization" or "subsidiary" over "part of" to match standard annotation guidelines.
 """
@@ -1261,11 +1263,13 @@ Output the extracted relationships DIRECTLY in JSON format. Do not include any e
 Format:
 {{"relations": [{{"head_id": 0, "relation": "country", "tail_id": 5}}]}}
 
+Goal: MAXIMUM RECALL. Extract every valid relationship that can be logically inferred from the text. Pay special attention to implicit inter-sentence relations. Do not miss any valid connections, especially for long-tail entities.
+
 Rules:
 - head_id is the SUBJECT entity index (e.g. 0, 1, 2...).
 - tail_id is the OBJECT entity index.
 - relation must be an exact natural-language name from the valid list.
-- STRICT ANTI-HALLUCINATION: Do NOT use external knowledge or common sense (e.g., geography, history). Only extract relations EXPLICITLY STATED in the document text.
+- ANTI-HALLUCINATION: Do NOT fabricate relations using pure external common sense. Prefer text-grounded inference; implicit cross-sentence relations are valid.
 - INVERSE RELATIONS: If a relation logically implies its inverse (e.g., "parent organization" vs "subsidiary", "contains" vs "located in"), you MUST extract BOTH directions as separate relations if supported by the document text.
 - For companies/organizations, prefer "parent organization" or "subsidiary" over "part of" to match standard annotation guidelines.
 
