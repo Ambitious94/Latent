@@ -1402,7 +1402,7 @@ def build_extraction_prompts_text_mas_sequential(dataset: str, role: str, questi
     """
     import json
     
-    system_message = "You are Qwen, created by Alibaba Cloud. You are a document information extraction specialist. When asked to extract, output ONLY valid JSON without any thinking process or explanatory text."
+    system_message = "You are Qwen, created by Alibaba Cloud. You are a document information extraction specialist."
     
     assert method in ["text_mas"], "this prompt only for text_mas method"
     
@@ -1412,9 +1412,10 @@ def build_extraction_prompts_text_mas_sequential(dataset: str, role: str, questi
     
     # Dataset-specific instructions
     if dataset == "docred":
-        task_desc = "document-level relation extraction using Wikidata property IDs"
-        focus_areas = "named entities and their relationships (using Wikidata relation IDs like P17, P569, P27)"
-        output_constraint = DOCRED_RELATIONS_FULL
+        task_desc = "document-level relation extraction using entity indices and natural-language relation names."
+        focus_areas = "named entities and their relationships"
+        rel_names_list = ", ".join(f'"{name}"' for name in DOCRED_REL_MAP.values())
+        output_constraint = f"Valid relation names: {rel_names_list}\nUse EXACT relation name strings. Use head_id/tail_id (integer indices from the entity list) instead of entity names."
     elif dataset == "cord":
         task_desc = "receipt/invoice information extraction"
         focus_areas = "menu items, prices, subtotal, total, tax"
@@ -1507,16 +1508,20 @@ Entities (use ONLY these):
 {output_constraint}
 
 Instructions:
-1. First, analyze the document and reason about relationships (write your thinking)
+1. First, analyze the document and reason about relationships based on previous findings (write your thinking)
 2. Then output FINAL JSON starting with: {{"relations": [...]}}
 
 Format example:
-{{"relations": [{{"head": "IBM Research – Brazil", "relation": "P749", "tail": "IBM Research", "evidence": [0]}}]}}
+{{"relations": [{{"head_id": 0, "relation": "country", "tail_id": 5}}]}}
+
+Goal: MAXIMUM RECALL. Extract every valid relationship that can be logically inferred from the text. Pay special attention to implicit inter-sentence relations. Do not miss any valid connections.
 
 Rules:
-- Use entities [0]-[15] only
-- Choose correct P-ID from relation list above
-- evidence: sentence indices from 0
+- head_id is the SUBJECT entity index (e.g. 0, 1, 2...).
+- tail_id is the OBJECT entity index.
+- relation must be an exact natural-language name from the valid list.
+- ANTI-HALLUCINATION: Do NOT fabricate relations using pure external common sense. Prefer text-grounded inference; implicit cross-sentence relations are valid.
+- INVERSE RELATIONS: If a relation logically implies its inverse, extract BOTH directions.
 
 Previous agents found:
 {context}
@@ -1547,7 +1552,7 @@ def build_extraction_prompts_text_mas_hierarchical(dataset: str, role: str, ques
     """
     import json
     
-    system_message = "You are Qwen, created by Alibaba Cloud. You are a document information extraction specialist. When asked to extract, output ONLY valid JSON without any thinking process or explanatory text."
+    system_message = "You are Qwen, created by Alibaba Cloud. You are a document information extraction specialist."
     
     assert method in ["text_mas"], "this prompt only for text_mas method"
     
@@ -1557,9 +1562,10 @@ def build_extraction_prompts_text_mas_hierarchical(dataset: str, role: str, ques
     
     # Dataset-specific instructions (same as sequential)
     if dataset == "docred":
-        task_desc = "document-level relation extraction using Wikidata property IDs"
-        focus_areas = "named entities and their relationships (using Wikidata relation IDs like P17, P569, P27)"
-        output_constraint = DOCRED_RELATIONS_FULL
+        task_desc = "document-level relation extraction using entity indices and natural-language relation names."
+        focus_areas = "named entities and their relationships"
+        rel_names_list = ", ".join(f'"{name}"' for name in DOCRED_REL_MAP.values())
+        output_constraint = f"Valid relation names: {rel_names_list}\nUse EXACT relation name strings. Use head_id/tail_id (integer indices from the entity list) instead of entity names."
     elif dataset == "cord":
         task_desc = "receipt/invoice information extraction"
         focus_areas = "menu items, prices, subtotal, total, tax"
@@ -1657,16 +1663,20 @@ Entities (use ONLY these):
 {output_constraint}
 
 Instructions:
-1. First, analyze the document and reason about relationships (write your thinking)
+1. First, analyze the document and reason about relationships based on previous findings (write your thinking)
 2. Then output FINAL JSON starting with: {{"relations": [...]}}
 
 Format example:
-{{"relations": [{{"head": "IBM Research – Brazil", "relation": "P749", "tail": "IBM Research", "evidence": [0]}}]}}
+{{"relations": [{{"head_id": 0, "relation": "country", "tail_id": 5}}]}}
+
+Goal: MAXIMUM RECALL. Extract every valid relationship that can be logically inferred from the text. Pay special attention to implicit inter-sentence relations. Do not miss any valid connections.
 
 Rules:
-- Use entities [0]-[15] only
-- Choose correct P-ID from relation list above
-- evidence: sentence indices from 0
+- head_id is the SUBJECT entity index (e.g. 0, 1, 2...).
+- tail_id is the OBJECT entity index.
+- relation must be an exact natural-language name from the valid list.
+- ANTI-HALLUCINATION: Do NOT fabricate relations using pure external common sense. Prefer text-grounded inference; implicit cross-sentence relations are valid.
+- INVERSE RELATIONS: If a relation logically implies its inverse, extract BOTH directions.
 
 Partition findings:
 {context}
