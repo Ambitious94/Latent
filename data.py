@@ -741,7 +741,7 @@ def load_finer(
     # 如果 doc_path 是 "nlpaueb/finer-139"，直接从云端/缓存加载
     if doc_path == "nlpaueb/finer-139":
         print(f"Loading FinER-139 from HuggingFace Hub (split: {split})...")
-        ds = load_dataset("nlpaueb/finer-139", split=split, cache_dir=cache_dir)
+        ds = load_dataset("nlpaueb/finer-139", split=split, cache_dir=cache_dir, trust_remote_code=True)
         # 直接从 HF 数据集特征中提取标签映射字典
         tag_names = ds.features['ner_tags'].feature.names
         id2tag = {i: name for i, name in enumerate(tag_names)}
