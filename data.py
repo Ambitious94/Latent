@@ -721,136 +721,97 @@ def load_funsd(
 
 
 def load_finer(
-    doc_path: str,
+    doc_path: str = "nlpaueb/finer-139",
     split: str = "train",
-    mode: str = "chunks",
+    mode: str = "full",
     chunk_size: int = 3000,
     overlap: int = 300,
     num_partitions: int = 3,
     cache_dir: Optional[str] = None,
-    tag2id_path: Optional[str] = None  # Path to tag2id.json for IOB2 format
+    tag2id_path: Optional[str] = None
 ) -> Iterable[Dict]:
     """
-    Load FinER-139 dataset for fine-grained financial entity recognition.
-    Supports both formats:
-    1. Already converted: {"text": "...", "entities": [{"text": "", "label": "", "start": 0, "end": 0}]}
-    2. Official IOB2: {"tokens": [...], "ner_tags": [...]} - automatically converts to entities
+    Load FinER-139 dataset directly from HuggingFace Hub.
+    Auto-converts IOB2 tokens to entity spans with precise character-level offsets.
     """
     import json
-    import os
-    
-    if not os.path.exists(doc_path):
-        raise FileNotFoundError(f"FinER file not found: {doc_path}")
-    
-    # Helper function to convert IOB2 tags to entities
-    def iob2_to_entities(tokens, ner_tags, id2tag):
-        """Convert IOB2 format to entity list"""
+    from datasets import load_dataset
+
+    # 1. 自动从 Hugging Face 加载数据集
+    # 如果 doc_path 是 "nlpaueb/finer-139"，直接从云端/缓存加载
+    if doc_path == "nlpaueb/finer-139":
+        print(f"Loading FinER-139 from HuggingFace Hub (split: {split})...")
+        ds = load_dataset("nlpaueb/finer-139", split=split, cache_dir=cache_dir)
+        # 直接从 HF 数据集特征中提取标签映射字典
+        tag_names = ds.features['ner_tags'].feature.names
+        id2tag = {i: name for i, name in enumerate(tag_names)}
+    else:
+        # 兼容旧版的本地 JSON 文件加载逻辑
+        import os
+        if not os.path.exists(doc_path):
+            raise FileNotFoundError(f"FinER file not found: {doc_path}")
+        with open(doc_path, 'r', encoding='utf-8') as f:
+            ds = json.load(f) if doc_path.endswith('.json') else [{"text": f.read()}]
+        # 这里省略了本地找 tag2id 的代码，因为推荐直接用 HF 数据集
+        id2tag = {} 
+
+    def iob2_to_entities_with_char_offsets(tokens, ner_tags, id2tag):
+        """将 IOB2 转换为实体列表，并精准计算字符级坐标(Character-level start/end)"""
         entities = []
         current_entity = None
+        current_char_pos = 0  # 追踪字符索引
         
-        for i, (token, tag_id) in enumerate(zip(tokens, ner_tags)):
-            tag = id2tag.get(tag_id, "O")
+        for token, tag_id in zip(tokens, ner_tags):
+            tag = id2tag.get(tag_id, "O") if id2tag else "O"
+            token_len = len(token)
             
             if tag.startswith("B-"):
-                # Save previous entity
                 if current_entity:
                     entities.append(current_entity)
-                # Start new entity
-                label = tag[2:]
                 current_entity = {
                     "text": token,
-                    "label": label,
-                    "start": i,
-                    "end": i
+                    "type": tag[2:],  # Prompts 中要求输出的是 type
+                    "start": current_char_pos,
+                    "end": current_char_pos + token_len
                 }
-            elif tag.startswith("I-") and current_entity:
-                # Continue current entity
+            elif tag.startswith("I-") and current_entity and tag[2:] == current_entity["type"]:
                 current_entity["text"] += " " + token
-                current_entity["end"] = i
-            else:  # O tag
-                # Save previous entity
+                current_entity["end"] = current_char_pos + token_len
+            else:
                 if current_entity:
                     entities.append(current_entity)
                     current_entity = None
-        
-        # Save last entity
+                    
+            # 加 1 是因为后面的 full_text 拼接时是用空格(" ")拼接的
+            current_char_pos += token_len + 1
+            
         if current_entity:
             entities.append(current_entity)
-        
-        return entities
-    
-    with open(doc_path, 'r', encoding='utf-8') as f:
-        if doc_path.endswith('.json'):
-            data = json.load(f)
-        else:
-            full_text = f.read()
-            data = [{"text": full_text}]
-    
-    # Load tag2id mapping if IOB2 format detected
-    id2tag = None
-    if isinstance(data, list) and data and "ner_tags" in data[0]:
-        # Detect IOB2 format, need tag2id mapping
-        if tag2id_path and os.path.exists(tag2id_path):
-            with open(tag2id_path, 'r', encoding='utf-8') as f:
-                tag2id = json.load(f)
-                id2tag = {v: k for k, v in tag2id.items()}
-        else:
-            # Try to find tag2id.json in same directory
-            base_dir = os.path.dirname(doc_path)
-            default_tag2id = os.path.join(base_dir, "tag2id.json")
-            if os.path.exists(default_tag2id):
-                with open(default_tag2id, 'r', encoding='utf-8') as f:
-                    tag2id = json.load(f)
-                    id2tag = {v: k for k, v in tag2id.items()}
-            else:
-                # Auto-generate id2tag from data if not found
-                print(f"⚠️  tag2id.json not found, auto-generating from data...")
-                all_tag_ids = set()
-                for doc in data:
-                    if "ner_tags" in doc:
-                        all_tag_ids.update(doc["ner_tags"])
-                
-                # Create a default mapping (0 -> O, others -> ENTITY-{id})
-                id2tag = {0: "O"}
-                for tag_id in sorted(all_tag_ids):
-                    if tag_id != 0 and tag_id not in id2tag:
-                        id2tag[tag_id] = f"ENTITY-{tag_id}"
-                
-                print(f"✓ Auto-generated {len(id2tag)} tag mappings: {id2tag}")
-                
-                # Optionally save the mapping for future use
-                try:
-                    with open(default_tag2id, 'w', encoding='utf-8') as f:
-                        tag2id_auto = {v: k for k, v in id2tag.items()}
-                        json.dump(tag2id_auto, f, indent=2, ensure_ascii=False)
-                    print(f"✓ Saved auto-generated mapping to {default_tag2id}")
-                except:
-                    pass
-    
+            
+        return {"entities": entities}
+
     # Standard FinER extraction schema
     extract_template = {
         "entities": [
-            {"text": "", "label": "", "start": 0, "end": 0}
+            {"text": "", "type": "", "start": 0, "end": 0}
         ]
     }
     
-    for doc in (data if isinstance(data, list) else [data]):
-        # Handle IOB2 format
-        if "tokens" in doc and "ner_tags" in doc:
-            tokens = doc["tokens"]
-            ner_tags = doc["ner_tags"]
+    for item in ds:
+        if "tokens" in item and "ner_tags" in item:
+            tokens = item["tokens"]
+            ner_tags = item["ner_tags"]
             full_text = " ".join(tokens)
-            gold = iob2_to_entities(tokens, ner_tags, id2tag)
+            gold_dict = iob2_to_entities_with_char_offsets(tokens, ner_tags, id2tag)
         else:
-            # Already converted format
-            full_text = doc.get("text", "") or str(doc)
-            gold = doc.get("entities", [])
-        
+            full_text = item.get("text", "") or str(item)
+            gold_dict = {"entities": item.get("entities", [])}
+            
         if mode == "full":
             yield {
                 "question": full_text,
-                "solution": json.dumps(gold, ensure_ascii=False),
-                "gold": json.dumps(gold, ensure_ascii=False),
+                "solution": json.dumps(gold_dict, ensure_ascii=False),
+                "gold": json.dumps(gold_dict, ensure_ascii=False),
                 "extract_template": json.dumps(extract_template, ensure_ascii=False),
                 "dataset": "finer",
             }
@@ -866,8 +827,8 @@ def load_finer(
             for i, chunk in enumerate(chunks):
                 yield {
                     "question": chunk,
-                    "solution": json.dumps(gold, ensure_ascii=False),
-                    "gold": json.dumps(gold, ensure_ascii=False),
+                    "solution": json.dumps(gold_dict, ensure_ascii=False),
+                    "gold": json.dumps(gold_dict, ensure_ascii=False),
                     "extract_template": json.dumps(extract_template, ensure_ascii=False),
                     "chunk_info": f"Chunk {i+1}/{len(chunks)}",
                     "dataset": "finer",
@@ -881,8 +842,8 @@ def load_finer(
                 
                 yield {
                     "question": full_text[start:end],
-                    "solution": json.dumps(gold, ensure_ascii=False),
-                    "gold": json.dumps(gold, ensure_ascii=False),
+                    "solution": json.dumps(gold_dict, ensure_ascii=False),
+                    "gold": json.dumps(gold_dict, ensure_ascii=False),
                     "extract_template": json.dumps(extract_template, ensure_ascii=False),
                     "partition_info": f"Partition {i+1}/{num_partitions}",
                     "dataset": "finer",

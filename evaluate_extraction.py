@@ -328,45 +328,116 @@ def evaluate_funsd(predictions: List[Dict], golds: List[Dict]) -> Dict[str, floa
 
 def evaluate_finer(predictions: List[Dict], golds: List[Dict]) -> Dict[str, float]:
     """
-    评估 FinER-139 金融实体识别
+    评估 FinER-139 金融实体识别 (严格序列标注模式)
     
-    Metrics: Entity-level Precision, Recall, F1
+    通过将预测的实体映射回原文的 Token 序列，生成 BIO 标签，
+    并调用与官方基线完全相同的 seqeval 库进行严格对齐评测。
     """
-    pred_entities = []
-    gold_entities = []
+    import re
+    try:
+        from seqeval.metrics.sequence_labeling import precision_recall_fscore_support
+    except ImportError:
+        print("\n[WARNING] 请先安装 seqeval: pip install seqeval")
+        return {"precision": 0.0, "recall": 0.0, "f1": 0.0}
+
+    def align_to_bio(text: str, entities: List[Dict]) -> List[str]:
+        """将 JSON 格式的实体转换为 BIO 标签序列"""
+        tokens = []
+        spans = []
+        # 使用简单的正则分词匹配主流英文序列标注（按空格和标点切分）
+        for match in re.finditer(r'\S+', text):
+            tokens.append(match.group())
+            spans.append((match.start(), match.end()))
+            
+        bio_tags = ["O"] * len(tokens)
+        
+        # 按实体长度降序排序，优先标注长实体，防止互相覆盖
+        entities_sorted = sorted(entities, key=lambda x: len(x.get("text", "")), reverse=True)
+        
+        for ent in entities_sorted:
+            ent_text = ent.get("text", "")
+            # 兼容模型输出 label 或 type 两种 key
+            ent_type = ent.get("type", ent.get("label", "")).upper()
+            start = ent.get("start", -1)
+            end = ent.get("end", -1)
+            
+            if not ent_text or not ent_type:
+                continue
+                
+            # 容错降级：如果 LLM 没有输出或输出了错误的 start/end 位置，使用字符串查找回退
+            if start == -1 or end == -1:
+                start = text.find(ent_text)
+                if start != -1:
+                    end = start + len(ent_text)
+                    
+            if start == -1:
+                continue  # 原文中确实找不到该实体，直接丢弃(当做FP或FN)
+                
+            # 将字符级 span 映射到 Token 级的 BIO 标签
+            started = False
+            for i, (tok_start, tok_end) in enumerate(spans):
+                # 如果 Token 的区间和实体的区间有交集
+                if max(start, tok_start) < min(end, tok_end):
+                    if not started:
+                        if bio_tags[i] == "O":  # 只有空位才写入
+                            bio_tags[i] = f"B-{ent_type}"
+                            started = True
+                    else:
+                        if bio_tags[i] == "O":
+                            bio_tags[i] = f"I-{ent_type}"
+                            
+        return bio_tags
+
+    y_true_all = []
+    y_pred_all = []
     
     for pred, gold in zip(predictions, golds):
+        # 1. 获取当前文档的原始文本 (在 run.py 传递 batch 时保留在 question 中)
+        text = pred.get("question", "")
+        if not text and isinstance(gold, dict):
+            text = gold.get("question", "")
+            
+        if not text:
+            continue # 没有原文无法进行序列对齐
+            
+        # 2. 解析预测数据
         try:
             pred_data = json.loads(pred.get("prediction", "{}"))
-            gold_data = json.loads(gold) if isinstance(gold, str) else gold
         except (json.JSONDecodeError, TypeError, ValueError):
-            continue
-        
+            pred_data = {}
+            
+        # 3. 解析金标准数据
+        gold_data = json.loads(gold) if isinstance(gold, str) else gold
+        if not isinstance(gold_data, dict):
+            gold_data = {}
+            
         pred_ents = pred_data.get("entities", [])
         gold_ents = gold_data.get("entities", [])
         
-        # 使用 (text, label) 作为唯一标识
-        pred_entities.extend([(e.get("text", ""), e.get("label", "")) for e in pred_ents])
-        gold_entities.extend([(e.get("text", ""), e.get("label", "")) for e in gold_ents])
-    
-    pred_set = set(pred_entities)
-    gold_set = set(gold_entities)
-    
-    tp = len(pred_set & gold_set)
-    fp = len(pred_set - gold_set)
-    fn = len(gold_set - pred_set)
-    
-    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+        # 4. 生成 BIO 序列
+        y_pred = align_to_bio(text, pred_ents)
+        y_true = align_to_bio(text, gold_ents)
+        
+        y_pred_all.append(y_pred)
+        y_true_all.append(y_true)
+        
+    # 5. 调用官方同款的 seqeval 指标计算函数
+    precision, recall, f1, support = precision_recall_fscore_support(
+        y_true=y_true_all,
+        y_pred=y_pred_all,
+        average='micro',  # 官方 FinER 论文通常汇报 micro F1
+        warn_for=('f-score',),
+        beta=1,
+        zero_division=0
+    )
     
     return {
         "precision": precision,
         "recall": recall,
         "f1": f1,
-        "true_positives": tp,
-        "false_positives": fp,
-        "false_negatives": fn
+        "true_positives": 0,   # seqeval 不直接暴露绝对数量，置 0 占位
+        "false_positives": 0,
+        "false_negatives": 0
     }
 
 
