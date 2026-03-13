@@ -417,10 +417,12 @@ def main():
     else:
         # 加载纯文本模型
         from transformers import AutoModelForCausalLM, AutoTokenizer
+        local_rank = int(os.environ.get("LOCAL_RANK", 0))
         model = AutoModelForCausalLM.from_pretrained(
             args.model_name,
             torch_dtype=torch.bfloat16,
-            device_map="auto"
+            device_map={"": local_rank},
+            attn_implementation="flash_attention_2"
         )
         processor = AutoTokenizer.from_pretrained(args.model_name)
         if processor.pad_token is None:
