@@ -1091,6 +1091,23 @@ Rules:
 - INVERSE RELATIONS: If a relation logically implies its inverse (e.g., "parent organization" vs "subsidiary", "contains" vs "located in"), you MUST extract BOTH directions as separate relations if supported by the document text.
 - For companies/organizations, prefer "parent organization" or "subsidiary" over "part of" to match standard annotation guidelines.
 """
+        # ====== 这里就是我们修改的核心：为 finer 专门对齐排版，把文档内容移到最底下 ======
+        elif dataset == "finer":
+            user_prompt = f"""Task: {task_desc}
+
+Identify and extract financial entities and their corresponding XBRL tags from the text.
+
+{output_constraint}
+
+Instructions:
+1. Synthesize all findings from previous agents
+2. Output FINAL JSON that fills the extraction schema completely
+
+Document text:
+{question}
+
+Extract and output JSON:"""
+        # =========================================================================
         else:
             user_prompt = f"""Task: {task_desc}
 
