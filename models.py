@@ -378,7 +378,6 @@ class ModelWrapper:
             raise ValueError("input_ids must be 2D with shape [batch, seq_len]")
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids, device=self.device)
-        prompt_lengths = attention_mask.sum(dim=1).tolist()
         cache_position = None
         if past_key_values is not None:
             past_len = _past_length(past_key_values)
@@ -410,11 +409,16 @@ class ModelWrapper:
         )
         sequences = outputs.sequences
         generations: List[str] = []
-        for idx, length in enumerate(prompt_lengths):
-            length = int(length)
-            generated_ids = sequences[idx, length:]
+
+        # 使用 input_ids 真实的矩阵长度作为切片起点
+        prompt_length = input_ids.shape[1]
+
+        for idx in range(input_ids.shape[0]):
+            # 精准切出新生成的 token
+            generated_ids = sequences[idx, prompt_length:]
             text = self.tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
             generations.append(text)
+
         return generations, outputs.past_key_values
 
     def tokenize_text(self, text: str) -> torch.Tensor:
