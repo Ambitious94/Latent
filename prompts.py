@@ -694,33 +694,18 @@ Your response:
 def build_agent_messages_single_agent(question: str, args=None) -> list[dict]:
     # ====== 新增：专门拦截 finer 任务，使用与微调绝对一致的 Prompt ======
     if args and args.task == "finer":
-        instruction = """Task: Fine-grained financial named entity recognition.
+        instruction = """Task: Fine-grained financial entity recognition (FinER).
 
-Identify and classify financial entities in text.
-
-Entity types:
-- PER: Person names (executives, analysts, investors)
-- ORG: Organizations (companies, banks, institutions)
-- LOC: Locations (countries, cities, regions)
-- MONEY: Monetary amounts ("$1M", "100 million dollars")
-- DATE: Dates and time periods ("Q3 2023", "March 15")
-- PERCENT: Percentage values ("5%", "15.5 percent")
-- STOCK: Stock tickers and symbols ("AAPL", "NASDAQ:MSFT")
-- METRIC: Financial metrics ("revenue", "profit margin", "EPS")
-- PRODUCT: Financial products ("bonds", "derivatives", "mortgage")
-- LAW: Financial regulations ("Dodd-Frank", "Basel III")
+Identify and extract financial entities and their corresponding XBRL tags from the text.
 
 Output JSON format:
-{"entities": [{"text": "Apple Inc.", "type": "ORG", "start": 0, "end": 10}, {"text": "$2.5B", "type": "MONEY", "start": 25, "end": 30}]}
+{"entities": [{"text": "entity_text", "type": "XBRL_Tag_Name", "start": 0, "end": 10}]}
 
 Rules:
-- start/end are character positions in original text (0-based)
-- text is the exact entity string
-- type must be one of the predefined types
-
-Example:
-Input: "Apple reported $95.3B revenue in Q1 2024, up 5%."
-Output: {"entities": [{"text": "Apple", "type": "ORG", "start": 0, "end": 5}, {"text": "$95.3B", "type": "MONEY", "start": 15, "end": 22}, {"text": "Q1 2024", "type": "DATE", "start": 34, "end": 41}, {"text": "5%", "type": "PERCENT", "start": 46, "end": 48}]}"""
+- start/end are character positions in the original text (0-based).
+- text is the exact string of the entity.
+- type must be the exact financial XBRL tag corresponding to the entity.
+- If no financial entities are found, output {"entities": []}."""
 
         system_msg = "You are an expert document information extraction system. Extract structured information accurately and output valid JSON only."
         user_msg = f"{instruction}\n\nDocument text:\n{question}\n\nExtract and output JSON:"
@@ -1779,33 +1764,18 @@ Input: "Item1 $10.00\nItem2 $15.50\nSubtotal $25.50\nTax $2.48\nTotal $27.98"
 Output: {"num_items": 2, "subtotal_price": "25.50", "tax_price": "2.48", "total_price": "27.98", "service_price": "", "etc": ""}"""
     
     elif dataset == "finer":
-        instruction = """Task: Fine-grained financial named entity recognition.
+        instruction = """Task: Fine-grained financial entity recognition (FinER).
 
-Identify and classify financial entities in text.
+    Identify and extract financial entities and their corresponding XBRL tags from the text.
 
-Entity types:
-- PER: Person names (executives, analysts, investors)
-- ORG: Organizations (companies, banks, institutions)
-- LOC: Locations (countries, cities, regions)
-- MONEY: Monetary amounts ("$1M", "100 million dollars")
-- DATE: Dates and time periods ("Q3 2023", "March 15")
-- PERCENT: Percentage values ("5%", "15.5 percent")
-- STOCK: Stock tickers and symbols ("AAPL", "NASDAQ:MSFT")
-- METRIC: Financial metrics ("revenue", "profit margin", "EPS")
-- PRODUCT: Financial products ("bonds", "derivatives", "mortgage")
-- LAW: Financial regulations ("Dodd-Frank", "Basel III")
+    Output JSON format:
+    {"entities": [{"text": "entity_text", "type": "XBRL_Tag_Name", "start": 0, "end": 10}]}
 
-Output JSON format:
-{"entities": [{"text": "Apple Inc.", "type": "ORG", "start": 0, "end": 10}, {"text": "$2.5B", "type": "MONEY", "start": 25, "end": 30}]}
-
-Rules:
-- start/end are character positions in original text (0-based)
-- text is the exact entity string
-- type must be one of the predefined types
-
-Example:
-Input: "Apple reported $95.3B revenue in Q1 2024, up 5%."
-Output: {"entities": [{"text": "Apple", "type": "ORG", "start": 0, "end": 5}, {"text": "$95.3B", "type": "MONEY", "start": 15, "end": 22}, {"text": "Q1 2024", "type": "DATE", "start": 34, "end": 41}, {"text": "5%", "type": "PERCENT", "start": 46, "end": 48}]}"""
+    Rules:
+    - start/end are character positions in the original text (0-based).
+    - text is the exact string of the entity.
+    - type must be the exact financial XBRL tag corresponding to the entity.
+    - If no financial entities are found, output {"entities": []}."""
     
     else:
         instruction = "Task: Extract information from the document."
