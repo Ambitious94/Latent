@@ -264,7 +264,18 @@ class LatentMASMethod:
         results: List[Dict] = []
         for idx, item in enumerate(items):
             final_text = final_texts[idx]
-            eval_result = evaluate_prediction(self.task, final_text, item, idx)
+
+            # ====== 新增：剥离 <think> 标签，精准提取 JSON ======
+            start_idx = final_text.find('{')
+            end_idx = final_text.rfind('}')
+            if start_idx != -1 and end_idx != -1 and start_idx <= end_idx:
+                cleaned_text = final_text[start_idx:end_idx+1]
+            else:
+                cleaned_text = final_text
+            # =================================================
+
+            # 注意这里传入的是 cleaned_text
+            eval_result = evaluate_prediction(self.task, cleaned_text, item, idx)
             pred = eval_result["prediction"]
             gold = eval_result["gold"]
             ok = eval_result["correct"]
@@ -461,7 +472,18 @@ class LatentMASMethod:
         results: List[Dict] = []
         for idx, item in enumerate(items):
             final_text = final_texts[idx]
-            eval_result = evaluate_prediction(self.task, final_text, item, idx)
+
+            # ====== 新增：剥离 <think> 标签，精准提取 JSON ======
+            start_idx = final_text.find('{')
+            end_idx = final_text.rfind('}')
+            if start_idx != -1 and end_idx != -1 and start_idx <= end_idx:
+                cleaned_text = final_text[start_idx:end_idx+1]
+            else:
+                cleaned_text = final_text
+            # =================================================
+
+            # 注意这里传入的是 cleaned_text
+            eval_result = evaluate_prediction(self.task, cleaned_text, item, idx)
             pred = eval_result["prediction"]
             gold = eval_result["gold"]
             ok = eval_result["correct"]
