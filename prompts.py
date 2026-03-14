@@ -963,9 +963,16 @@ def build_extraction_prompts_sequential(dataset: str, role: str, question: str, 
         output_constraint = "Fill 'entities' array with all text elements and their labels, 'relations' array with question-answer pairs."
     
     elif dataset == "finer":
-        task_desc = "fine-grained financial entity recognition. Identify and classify financial domain entities."
-        focus_areas = "financial terms (stock codes, rates, accounting items, metrics, dates, amounts, company names)"
-        output_constraint = "Fill 'entities' array with all financial entities, their types, and positions in text."
+        task_desc = "fine-grained financial entity recognition (FinER)."
+        focus_areas = "financial entities and their corresponding XBRL tags"
+        output_constraint = """Output JSON format:
+{"entities": [{"text": "entity_text", "type": "XBRL_Tag_Name", "start": 0, "end": 10}]}
+
+Rules:
+- start/end are character positions in the original text (0-based).
+- text is the exact string of the entity.
+- type must be the exact financial XBRL tag corresponding to the entity.
+- If no financial entities are found, output {"entities": []}."""
     
     else:
         task_desc = "document information extraction."
@@ -1138,9 +1145,16 @@ def build_extraction_prompts_hierarchical(dataset: str, role: str, question: str
         output_constraint = "Fill 'entities' array with all text elements and their labels, 'relations' array with question-answer pairs."
     
     elif dataset == "finer":
-        task_desc = "financial entity recognition"
-        focus_areas = "financial domain entities and terms"
-        output_constraint = "Fill 'entities' array with all financial entities, their types, and positions in text."
+        task_desc = "fine-grained financial entity recognition (FinER)."
+        focus_areas = "financial entities and their corresponding XBRL tags"
+        output_constraint = """Output JSON format:
+{"entities": [{"text": "entity_text", "type": "XBRL_Tag_Name", "start": 0, "end": 10}]}
+
+Rules:
+- start/end are character positions in the original text (0-based).
+- text is the exact string of the entity.
+- type must be the exact financial XBRL tag corresponding to the entity.
+- If no financial entities are found, output {"entities": []}."""
     
     else:
         task_desc = "document extraction"
@@ -1384,9 +1398,16 @@ def build_extraction_prompts_text_mas_sequential(dataset: str, role: str, questi
         focus_areas = "form fields (questions, answers, headers)"
         output_constraint = "Fill entities and relations arrays."
     elif dataset == "finer":
-        task_desc = "financial named entity recognition"
-        focus_areas = "financial terms, amounts, companies, metrics"
-        output_constraint = "Fill entities array with all financial entities."
+        task_desc = "fine-grained financial entity recognition (FinER)."
+        focus_areas = "financial entities and their corresponding XBRL tags"
+        output_constraint = """Output JSON format:
+{"entities": [{"text": "entity_text", "type": "XBRL_Tag_Name", "start": 0, "end": 10}]}
+
+Rules:
+- start/end are character positions in the original text (0-based).
+- text is the exact string of the entity.
+- type must be the exact financial XBRL tag corresponding to the entity.
+- If no financial entities are found, output {"entities": []}."""
     else:
         task_desc = "document information extraction"
         focus_areas = "key information"
@@ -1534,9 +1555,16 @@ def build_extraction_prompts_text_mas_hierarchical(dataset: str, role: str, ques
         focus_areas = "form fields (questions, answers, headers)"
         output_constraint = "Fill entities and relations arrays."
     elif dataset == "finer":
-        task_desc = "financial named entity recognition"
-        focus_areas = "financial terms, amounts, companies, metrics"
-        output_constraint = "Fill entities array with all financial entities."
+        task_desc = "fine-grained financial entity recognition (FinER)."
+        focus_areas = "financial entities and their corresponding XBRL tags"
+        output_constraint = """Output JSON format:
+{"entities": [{"text": "entity_text", "type": "XBRL_Tag_Name", "start": 0, "end": 10}]}
+
+Rules:
+- start/end are character positions in the original text (0-based).
+- text is the exact string of the entity.
+- type must be the exact financial XBRL tag corresponding to the entity.
+- If no financial entities are found, output {"entities": []}."""
     else:
         task_desc = "document information extraction"
         focus_areas = "key information"
