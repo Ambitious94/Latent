@@ -1059,6 +1059,10 @@ Continue organization:
 """
     
     elif role == "judger":
+        # ====== 新增：强制让 Judger 使用和微调时一模一样的系统提示词 ======
+        system_message = "You are an expert document information extraction system. Extract structured information accurately and output valid JSON only."
+        # =================================================================
+
         # Get entity list for DocRED
         entity_list = item.get("entity_list", "")
         docred_entity_section = ""
@@ -1231,6 +1235,10 @@ Partition 3 extraction:
 """
     
     elif role == "judger":
+        # ====== 新增：强制让 Judger 使用和微调时一模一样的系统提示词 ======
+        system_message = "You are an expert document information extraction system. Extract structured information accurately and output valid JSON only."
+        # =================================================================
+
         # Get entity list for DocRED
         entity_list = item.get("entity_list", "")
         
