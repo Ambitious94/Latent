@@ -1,7 +1,7 @@
 from typing import Dict, List
 
 from models import ModelWrapper
-from prompts import build_agent_messages_single_agent
+from prompts import build_agent_messages_single_agent, build_lora_extraction_prompt
 from utils import evaluate_prediction
 
 
@@ -30,10 +30,17 @@ class BaselineMethod:
     def run_batch(self, items: List[Dict]) -> List[Dict]:
         if len(items) > self.generate_bs:
             raise ValueError("Batch size exceeds configured generate_bs")
-        batch_messages = [
-            build_agent_messages_single_agent(question=item["question"], args=self.args)
-            for item in items
-        ]
+        batch_messages = []
+        for item in items:
+            # 针对信息抽取任务，使用与微调绝对一致的 LoRA 专属提示词
+            if self.task in ['docred', 're-docred', 're_docred', 'cord', 'funsd', 'finer']:
+                # 把 re-docred 映射为 docred 的模板
+                prompt_task = "docred" if "docred" in self.task else self.task
+                msg = build_lora_extraction_prompt(dataset=prompt_task, question=item["question"], item=item, args=self.args)
+            else:
+                # 兼容其他普通问答任务
+                msg = build_agent_messages_single_agent(question=item["question"], args=self.args)
+            batch_messages.append(msg)
         prompts, input_ids, attention_mask, tokens_batch, _ = self.model.prepare_chat_batch(
             batch_messages, add_generation_prompt=True
         )
