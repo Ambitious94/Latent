@@ -1091,26 +1091,21 @@ Rules:
 - INVERSE RELATIONS: If a relation logically implies its inverse (e.g., "parent organization" vs "subsidiary", "contains" vs "located in"), you MUST extract BOTH directions as separate relations if supported by the document text.
 - For companies/organizations, prefer "parent organization" or "subsidiary" over "part of" to match standard annotation guidelines.
 """
-        # ====== 终极对齐：100%还原训练时的字符排列，去除任何额外指令 ======
         elif dataset == "finer":
-            user_prompt = f"""Task: Fine-grained financial entity recognition (FinER).
+            instruction = """Task: Fine-grained financial entity recognition (FinER).
 
-    Identify and extract financial entities and their corresponding XBRL tags from the text.
+Identify and extract financial entities and their corresponding XBRL tags from the text.
 
-    Output JSON format:
-    {{"entities": [{{"text": "entity_text", "type": "XBRL_Tag_Name", "start": 0, "end": 10}}]}}
+Output JSON format:
+{"entities": [{"text": "entity_text", "type": "XBRL_Tag_Name", "start": 0, "end": 10}]}
 
-    Rules:
-    - start/end are character positions in the original text (0-based).
-    - text is the exact string of the entity.
-    - type must be the exact financial XBRL tag corresponding to the entity.
-    - If no financial entities are found, output {{"entities": []}}.
+Rules:
+- start/end are character positions in the original text (0-based).
+- text is the exact string of the entity.
+- type must be the exact financial XBRL tag corresponding to the entity.
+- If no financial entities are found, output {"entities": []}."""
 
-    Document text:
-    {question}
-
-    Extract and output JSON:"""
-        # =========================================================================
+            user_prompt = f"{instruction}\n\nDocument text:\n{question}\n\nExtract and output JSON:"
         else:
             user_prompt = f"""Task: {task_desc}
 
