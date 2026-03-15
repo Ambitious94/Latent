@@ -272,6 +272,34 @@ class LatentMASMethod:
                 cleaned_text = final_text[start_idx:end_idx+1]
             else:
                 cleaned_text = final_text
+
+            # ====== 终极修复：坐标对齐吸附 (Coordinate Snapping) ======
+            if self.task == "finer":
+                import json
+                try:
+                    data = json.loads(cleaned_text)
+                    doc_text = item.get("question", "")
+                    for ent in data.get("entities", []):
+                        ent_text = ent.get("text", "")
+                        pred_start = ent.get("start", 0)
+
+                        # 如果模型成功提取了实体文本，且文本确实在原文中
+                        if ent_text and ent_text in doc_text:
+                            starts = []
+                            idx_search = doc_text.find(ent_text)
+                            while idx_search != -1:
+                                starts.append(idx_search)
+                                idx_search = doc_text.find(ent_text, idx_search + 1)
+
+                            if starts:
+                                # 寻找距离模型预测坐标（带偏移的坐标）最近的真实坐标
+                                real_start = min(starts, key=lambda x: abs(x - pred_start))
+                                ent["start"] = real_start
+                                ent["end"] = real_start + len(ent_text)
+
+                    cleaned_text = json.dumps(data)
+                except Exception:
+                    pass
             # =================================================
 
             # 注意这里传入的是 cleaned_text
@@ -480,6 +508,34 @@ class LatentMASMethod:
                 cleaned_text = final_text[start_idx:end_idx+1]
             else:
                 cleaned_text = final_text
+
+            # ====== 终极修复：坐标对齐吸附 (Coordinate Snapping) ======
+            if self.task == "finer":
+                import json
+                try:
+                    data = json.loads(cleaned_text)
+                    doc_text = item.get("question", "")
+                    for ent in data.get("entities", []):
+                        ent_text = ent.get("text", "")
+                        pred_start = ent.get("start", 0)
+
+                        # 如果模型成功提取了实体文本，且文本确实在原文中
+                        if ent_text and ent_text in doc_text:
+                            starts = []
+                            idx_search = doc_text.find(ent_text)
+                            while idx_search != -1:
+                                starts.append(idx_search)
+                                idx_search = doc_text.find(ent_text, idx_search + 1)
+
+                            if starts:
+                                # 寻找距离模型预测坐标（带偏移的坐标）最近的真实坐标
+                                real_start = min(starts, key=lambda x: abs(x - pred_start))
+                                ent["start"] = real_start
+                                ent["end"] = real_start + len(ent_text)
+
+                    cleaned_text = json.dumps(data)
+                except Exception:
+                    pass
             # =================================================
 
             # 注意这里传入的是 cleaned_text
