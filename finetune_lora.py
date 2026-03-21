@@ -299,7 +299,27 @@ def load_training_data(args):
                 
             # 3. 清洗并构建我们设计的【嵌套 JSON】
             raw_gt_parse = ground_truth.get("gt_parse", {})
-            clean_menu = [{"nm": m.get("nm", ""), "cnt": m.get("cnt", ""), "price": m.get("price", "")} for m in raw_gt_parse.get("menu", [])]
+
+            # --- 新增的鲁棒解析逻辑 ---
+            raw_menu = raw_gt_parse.get("menu", [])
+            # 如果 menu 是单个字典，把它包装成列表
+            if isinstance(raw_menu, dict):
+                raw_menu = [raw_menu]
+            # 如果是其他奇葩类型(比如字符串)，直接置为空列表
+            elif not isinstance(raw_menu, list):
+                raw_menu = []
+
+            clean_menu = []
+            for m in raw_menu:
+                if isinstance(m, dict):
+                    # 强转为字符串，防止内部还嵌套其他奇奇怪怪的结构
+                    clean_menu.append({
+                        "nm": str(m.get("nm", "")),
+                        "cnt": str(m.get("cnt", "")),
+                        "price": str(m.get("price", ""))
+                    })
+            # --------------------------
+
             raw_total = raw_gt_parse.get("total", {}) if isinstance(raw_gt_parse.get("total"), dict) else {}
             clean_total = {
                 "total_price": raw_total.get("total_price", ""),
