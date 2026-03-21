@@ -379,7 +379,7 @@ def load_cord(
     """
     Load CORD dataset for receipt/invoice extraction.
     Supports official CORD format from samples.json:
-    Format: {"num_items": int, "subtotal_price": str, "service_price": str, "tax_price": str, "total_price": str, "etc": str}
+    Format: {"menu": [{"nm": str, "cnt": str, "price": str}], "total": {"total_price": str, "cashprice": str, "changeprice": str, "subtotal_price": str, "tax_price": str}}
     Supports multimodal input with image_path parameter or filepath field in data.
     """
     import json
@@ -401,14 +401,18 @@ def load_cord(
     if isinstance(data, dict) and "samples" in data:
         data = data["samples"]
     
-    # Standard CORD extraction schema (official format)
+    # Standard CORD extraction schema (official nested format)
     extract_template = {
-        "num_items": 0,
-        "subtotal_price": "",
-        "service_price": "",
-        "tax_price": "",
-        "total_price": "",
-        "etc": ""
+        "menu": [
+            {"nm": "", "cnt": "", "price": ""}
+        ],
+        "total": {
+            "total_price": "",
+            "cashprice": "",
+            "changeprice": "",
+            "subtotal_price": "",
+            "tax_price": ""
+        }
     }
     
     for doc in (data if isinstance(data, list) else [data]):
@@ -430,14 +434,43 @@ def load_cord(
         # Extract text and ground truth
         full_text = doc.get("text", "")
         
-        # Build ground truth from official CORD fields
-        gold = {}
-        for field in ["num_items", "subtotal_price", "service_price", "tax_price", "total_price", "etc"]:
-            if field in doc:
-                gold[field] = doc[field]
+        # Build ground truth from official CORD gt_parse (nested menu/total)
+        raw_gt_parse = doc.get("gt_parse", {}) if isinstance(doc, dict) else {}
+        has_gt_parse = isinstance(raw_gt_parse, dict) and ("menu" in raw_gt_parse or "total" in raw_gt_parse)
+        gold = {"menu": [], "total": {
+            "total_price": "",
+            "cashprice": "",
+            "changeprice": "",
+            "subtotal_price": "",
+            "tax_price": ""
+        }}
+
+        if has_gt_parse:
+            clean_menu = []
+            for m in raw_gt_parse.get("menu", []):
+                if isinstance(m, dict):
+                    clean_menu.append({
+                        "nm": str(m.get("nm", "")),
+                        "cnt": str(m.get("cnt", "")),
+                        "price": str(m.get("price", ""))
+                    })
+
+            raw_total = raw_gt_parse.get("total", {})
+            if not isinstance(raw_total, dict):
+                raw_total = {}
+
+            clean_total = {
+                "total_price": str(raw_total.get("total_price", "")),
+                "cashprice": str(raw_total.get("cashprice", "")),
+                "changeprice": str(raw_total.get("changeprice", "")),
+                "subtotal_price": str(raw_total.get("subtotal_price", "")),
+                "tax_price": str(raw_total.get("tax_price", ""))
+            }
+
+            gold = {"menu": clean_menu, "total": clean_total}
         
         # Fallback to custom ground_truth field if present
-        if not gold and "ground_truth" in doc:
+        if (not has_gt_parse) and "ground_truth" in doc:
             gold = doc["ground_truth"]
         
         # If no text but has image, use placeholder

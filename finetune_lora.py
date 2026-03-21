@@ -143,27 +143,27 @@ Rules:
 Output the JSON directly with no explanation."""
         
         elif self.task == "cord":
-            instruction = """Task: Extract receipt/invoice information from OCR text.
+            instruction = """Task: Extract receipt/invoice information from OCR text or image into a nested JSON structure.
 
-Extract these fields:
-1. num_items: Total number of items purchased (integer)
-2. subtotal_price: Price before tax/service charge (string with currency)
-3. service_price: Service charge amount (string)
-4. tax_price: Tax amount (string)
-5. total_price: Final total amount (string)
-6. etc: Additional charges or notes (string)
+You must extract information into two main sections:
+1. "menu": A list of purchased items. Each item must be a dictionary containing:
+    - "nm": Name of the item (string)
+    - "cnt": Quantity purchased (string, e.g., "1")
+    - "price": Price of the item (string)
+2. "total": A dictionary containing summary amounts:
+    - "total_price": The final total amount (string)
+    - "cashprice": Cash given by the customer (string, optional)
+    - "changeprice": Change returned (string, optional)
+    - "subtotal_price": Subtotal before tax (string, optional)
+    - "tax_price": Tax amount (string, optional)
 
-Important:
-- Extract exact amounts as they appear (e.g., "$12.50", "25.00")
-- If a field is not present, use empty string ""
-- num_items should be an integer count
+Rules:
+- Output valid JSON only.
+- If a field or value is missing in the receipt, use an empty string "".
+- If there are no menu items, output an empty list [] for "menu".
 
-Output JSON format:
-{"num_items": 3, "subtotal_price": "25.50", "service_price": "2.00", "tax_price": "2.48", "total_price": "29.98", "etc": ""}
-
-Example:
-Input: "Item1 $10.00\nItem2 $15.50\nSubtotal $25.50\nTax $2.48\nTotal $27.98"
-Output: {"num_items": 2, "subtotal_price": "25.50", "tax_price": "2.48", "total_price": "27.98", "service_price": "", "etc": ""}"""
+Output JSON format example:
+{"menu": [{"nm": "EGG TART", "cnt": "1", "price": "13,000"}], "total": {"total_price": "13,000", "cashprice": "15,000", "changeprice": "2,000"}}"""
         
         elif self.task == "finer":
             instruction = """Task: Fine-grained financial entity recognition (FinER).
@@ -275,6 +275,55 @@ def load_training_data(args):
     """加载训练数据"""
     print(f"Loading training data for {args.task}...")
     
+    # ======== 新增：直接从 HuggingFace 内存加载 CORD 数据 ========
+    if args.task == "cord":
+        print("⏳ 正在从 HuggingFace 加载 CORD-v2 数据集...")
+        from datasets import load_dataset
+        import json
+        
+        dataset = load_dataset("naver-clova-ix/cord-v2", split="train")
+        data_items = []
+        
+        for item in dataset:
+            # 1. 提取 PIL 图片
+            pil_image = item["image"]
+            if pil_image.mode != "RGB":
+                pil_image = pil_image.convert("RGB")
+                
+            # 2. 提取 OCR 文本
+            ground_truth = json.loads(item["ground_truth"])
+            ocr_text = ""
+            for line in ground_truth.get("valid_line", []):
+                words = [w.get("text", "") for w in line.get("words", [])]
+                ocr_text += " ".join(words) + "\n"
+                
+            # 3. 清洗并构建我们设计的【嵌套 JSON】
+            raw_gt_parse = ground_truth.get("gt_parse", {})
+            clean_menu = [{"nm": m.get("nm", ""), "cnt": m.get("cnt", ""), "price": m.get("price", "")} for m in raw_gt_parse.get("menu", [])]
+            raw_total = raw_gt_parse.get("total", {}) if isinstance(raw_gt_parse.get("total"), dict) else {}
+            clean_total = {
+                "total_price": raw_total.get("total_price", ""),
+                "cashprice": raw_total.get("cashprice", ""),
+                "changeprice": raw_total.get("changeprice", ""),
+                "subtotal_price": raw_total.get("subtotal_price", ""),
+                "tax_price": raw_total.get("tax_price", "")
+            }
+            gold_json = {"menu": clean_menu, "total": clean_total}
+            
+            # 4. 直接喂给你的 Dataset 类
+            data_items.append({
+                "question": ocr_text.strip(),
+                "gold": json.dumps(gold_json, ensure_ascii=False),
+                "image": pil_image
+            })
+            
+            if args.max_train_samples and len(data_items) >= args.max_train_samples:
+                break
+                
+        print(f"Loaded {len(data_items)} CORD training samples directly from HuggingFace.")
+        return data_items
+    # =========================================================
+    
     if args.task == "funsd":
         data_iter = load_funsd(
             doc_path=args.train_data,
@@ -290,11 +339,8 @@ def load_training_data(args):
             mode="full"
         )
     elif args.task == "cord":
-        data_iter = load_cord(
-            doc_path=args.train_data,
-            split="train",
-            mode="full"
-        )
+        # CORD 加载已在函数开头通过 HuggingFace 直接加载，此处应不会执行
+        raise RuntimeError("CORD 加载应在函数开头完成，如执行到此表示逻辑错误")
     elif args.task == "finer":
         data_iter = load_finer(
             doc_path=args.train_data,

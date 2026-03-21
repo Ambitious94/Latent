@@ -194,50 +194,101 @@ def evaluate_docred(predictions: List[Dict], golds: List[Dict]) -> Dict[str, flo
 
 def evaluate_cord(predictions: List[Dict], golds: List[Dict]) -> Dict[str, float]:
     """
-    评估 CORD 收据抽取（官方格式）
-    
-    Metrics: Field-level accuracy for num_items, subtotal_price, service_price, tax_price, total_price, etc
+    评估嵌套结构的 CORD 收据抽取 (支持 Menu 列表无序匹配 + Total 字典匹配)
     """
-    correct_fields = defaultdict(int)
-    total_fields = defaultdict(int)
-    
-    # Official CORD fields
-    eval_fields = ["num_items", "subtotal_price", "service_price", "tax_price", "total_price", "etc"]
-    
+    tp = 0
+    pred_count = 0
+    gold_count = 0
+
     for pred, gold in zip(predictions, golds):
+        # 解析预测结果
         try:
             pred_data = json.loads(pred.get("prediction", "{}"))
-            gold_data = json.loads(gold) if isinstance(gold, str) else gold
         except (json.JSONDecodeError, TypeError, ValueError):
-            continue
-        
-        # 评估每个字段
-        for field in eval_fields:
-            pred_val = str(pred_data.get(field, "")).strip()
-            gold_val = str(gold_data.get(field, "")).strip()
-            
-            if pred_val and gold_val:  # Both have value
-                if pred_val == gold_val:
-                    correct_fields[field] += 1
-                total_fields[field] += 1
-            elif not gold_val:  # Gold doesn't have this field, skip
-                continue
-            else:  # Pred missing but gold has value
-                total_fields[field] += 1
-    
-    # 计算准确率
-    results = {}
-    for field in eval_fields:
-        if total_fields[field] > 0:
-            accuracy = correct_fields[field] / total_fields[field]
-            results[f"{field}_accuracy"] = accuracy
-    
-    # 总体准确率
-    total_correct = sum(correct_fields.values())
-    total_count = sum(total_fields.values())
-    results["overall_accuracy"] = total_correct / total_count if total_count > 0 else 0.0
-    
-    return results
+            pred_data = {}
+
+        # 解析金标准
+        gold_data = json.loads(gold) if isinstance(gold, str) else gold
+        if not isinstance(gold_data, dict):
+            gold_data = {}
+
+        # ==========================================
+        # 1. 评估 Total 字典 (平铺字段对比)
+        # ==========================================
+        pred_total = pred_data.get("total", {}) if isinstance(pred_data.get("total"), dict) else {}
+        gold_total = gold_data.get("total", {}) if isinstance(gold_data.get("total"), dict) else {}
+
+        eval_total_keys = ["total_price", "cashprice", "changeprice", "subtotal_price", "tax_price"]
+        for key in eval_total_keys:
+            p_val = str(pred_total.get(key, "")).strip()
+            g_val = str(gold_total.get(key, "")).strip()
+
+            if p_val:
+                pred_count += 1
+            if g_val:
+                gold_count += 1
+            if p_val and g_val and p_val == g_val:
+                tp += 1
+
+        # ==========================================
+        # 2. 评估 Menu 列表 (无序多重集对比)
+        # ==========================================
+        pred_menu = pred_data.get("menu", []) if isinstance(pred_data.get("menu"), list) else []
+        gold_menu = gold_data.get("menu", []) if isinstance(gold_data.get("menu"), list) else []
+
+        # 将字典转换为不可变的 Tuple，以便进行集合操作与统计
+        # 格式: (nm, cnt, price)
+        def menu_to_tuples(menu_list):
+            res = []
+            for item in menu_list:
+                if isinstance(item, dict):
+                    nm = str(item.get("nm", "")).strip()
+                    cnt = str(item.get("cnt", "")).strip()
+                    price = str(item.get("price", "")).strip()
+                    # 只要有一个字段非空，就认为提取了一个有效条目
+                    if nm or cnt or price:
+                        res.append((nm, cnt, price))
+            return res
+
+        p_tuples = menu_to_tuples(pred_menu)
+        g_tuples = menu_to_tuples(gold_menu)
+
+        pred_count += len(p_tuples) * 3  # 每个商品算作 3 个属性的提取
+        gold_count += len(g_tuples) * 3
+
+        # 贪心匹配：寻找完全一样的元组并从候选中剔除（支持重复购买同一商品）
+        g_tuples_unmatched = list(g_tuples)
+        for p_tup in p_tuples:
+            if p_tup in g_tuples_unmatched:
+                tp += 3  # nm, cnt, price 全中
+                g_tuples_unmatched.remove(p_tup)
+            else:
+                # 容错匹配：如果不是全对，算算对了几个字段 (部分得分)
+                best_overlap = 0
+                best_idx = -1
+                for i, g_tup in enumerate(g_tuples_unmatched):
+                    overlap = sum(1 for p, g in zip(p_tup, g_tup) if p == g and p != "")
+                    if overlap > best_overlap:
+                        best_overlap = overlap
+                        best_idx = i
+
+                if best_idx != -1:
+                    tp += best_overlap
+                    g_tuples_unmatched.pop(best_idx)
+
+    # 计算最终的 Precision, Recall, F1
+    precision = tp / pred_count if pred_count > 0 else 0.0
+    recall = tp / gold_count if gold_count > 0 else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+
+    return {
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+        "true_positives": tp,
+        "pred_count": pred_count,
+        "gold_count": gold_count
+    }
 
 
 def evaluate_funsd(predictions: List[Dict], golds: List[Dict]) -> Dict[str, float]:

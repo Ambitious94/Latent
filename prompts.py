@@ -1792,27 +1792,27 @@ Output:
 }"""
     
     elif dataset == "cord":
-        instruction = """Task: Extract receipt/invoice information from OCR text.
+        instruction = """Task: Extract receipt/invoice information from OCR text or image into a nested JSON structure.
 
-Extract these fields:
-1. num_items: Total number of items purchased (integer)
-2. subtotal_price: Price before tax/service charge (string with currency)
-3. service_price: Service charge amount (string)
-4. tax_price: Tax amount (string)
-5. total_price: Final total amount (string)
-6. etc: Additional charges or notes (string)
+You must extract information into two main sections:
+1. "menu": A list of purchased items. Each item must be a dictionary containing:
+   - "nm": Name of the item (string)
+   - "cnt": Quantity purchased (string, e.g., "1")
+   - "price": Price of the item (string)
+2. "total": A dictionary containing summary amounts:
+   - "total_price": The final total amount (string)
+   - "cashprice": Cash given by the customer (string, optional)
+   - "changeprice": Change returned (string, optional)
+   - "subtotal_price": Subtotal before tax (string, optional)
+   - "tax_price": Tax amount (string, optional)
 
-Important:
-- Extract exact amounts as they appear (e.g., "$12.50", "25.00")
-- If a field is not present, use empty string ""
-- num_items should be an integer count
+Rules:
+- Output valid JSON only.
+- If a field or value is missing in the receipt, use an empty string "".
+- If there are no menu items, output an empty list [] for "menu".
 
-Output JSON format:
-{"num_items": 3, "subtotal_price": "25.50", "service_price": "2.00", "tax_price": "2.48", "total_price": "29.98", "etc": ""}
-
-Example:
-Input: "Item1 $10.00\nItem2 $15.50\nSubtotal $25.50\nTax $2.48\nTotal $27.98"
-Output: {"num_items": 2, "subtotal_price": "25.50", "tax_price": "2.48", "total_price": "27.98", "service_price": "", "etc": ""}"""
+Output JSON format example:
+{"menu": [{"nm": "EGG TART", "cnt": "1", "price": "13,000"}], "total": {"total_price": "13,000", "cashprice": "15,000", "changeprice": "2,000"}}"""
     
     elif dataset == "finer":
         instruction = """Task: Fine-grained financial entity recognition (FinER).
