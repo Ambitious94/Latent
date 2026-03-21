@@ -432,8 +432,16 @@ def vl_data_collator(features: List[Dict]) -> Dict:
             batch["pixel_values"] = torch.cat(pv_list, dim=0)
 
     if "image_grid_thw" in first and first["image_grid_thw"] is not None:
-        thw_list = [f["image_grid_thw"] for f in features if f.get("image_grid_thw") is not None]
+        thw_list = []
+        for f in features:
+            if f.get("image_grid_thw") is not None:
+                thw = f["image_grid_thw"]
+                # 确保每个 thw 至少是 2D 的 [1, 3] 形状
+                if thw.dim() == 1:
+                    thw = thw.unsqueeze(0)
+                thw_list.append(thw)
         if thw_list:
+            # 此时 thw_list 里的元素都是 [M, 3]，cat 后必定是 [N, 3]
             batch["image_grid_thw"] = torch.cat(thw_list, dim=0)
 
     return batch
