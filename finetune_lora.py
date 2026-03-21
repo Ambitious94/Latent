@@ -289,6 +289,15 @@ def load_training_data(args):
             pil_image = item["image"]
             if pil_image.mode != "RGB":
                 pil_image = pil_image.convert("RGB")
+
+            # ======== 新增：限制最大分辨率，防止 Token 爆炸 OOM ========
+            max_pixels = 1024
+            if max(pil_image.size) > max_pixels:
+                ratio = max_pixels / max(pil_image.size)
+                new_size = (int(pil_image.size[0] * ratio), int(pil_image.size[1] * ratio))
+                from PIL import Image
+                pil_image = pil_image.resize(new_size, Image.Resampling.LANCZOS)
+            # =========================================================
                 
             # 2. 提取 OCR 文本
             ground_truth = json.loads(item["ground_truth"])
@@ -531,6 +540,12 @@ def main():
     )
     
     model = get_peft_model(model, lora_config)
+
+    # ======== 新增：解决 LoRA 与梯度检查点冲突的灵魂代码 ========
+    if hasattr(model, "enable_input_require_grads"):
+        model.enable_input_require_grads()
+    # =========================================================
+
     model.print_trainable_parameters()
     
     # 确保模型在训练模式并启用梯度
@@ -573,7 +588,8 @@ def main():
         save_total_limit=3,
         bf16=use_bf16,
         fp16=not use_bf16,
-        gradient_checkpointing=False,  # 禁用以避免与LoRA冲突
+        gradient_checkpointing=True,  # 开启，节省显存
+        gradient_checkpointing_kwargs={"use_reentrant": False},
         dataloader_num_workers=0,
         remove_unused_columns=False,
         report_to="none"
