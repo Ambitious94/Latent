@@ -566,7 +566,7 @@ def main():
         bf16=use_bf16,
         fp16=not use_bf16,
         gradient_checkpointing=False,  # 禁用以避免与LoRA冲突
-        dataloader_num_workers=4,
+        dataloader_num_workers=0,
         remove_unused_columns=False,
         report_to="none"
     )
