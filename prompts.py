@@ -953,9 +953,15 @@ def build_extraction_prompts_sequential(dataset: str, role: str, question: str, 
         output_constraint = f"Valid relation names: {rel_names_list}\nUse EXACT relation name strings. Use head_id/tail_id (integer indices from the entity list) instead of entity names."
     
     elif dataset == "cord":
-        task_desc = "receipt/invoice information extraction. Extract structured purchase information."
-        focus_areas = "menu items (names, prices, counts), subtotal, total amount, tax, payment details"
-        output_constraint = "Fill the 'menu' array with all items, and populate subtotal/total/tax fields with exact numeric values."
+        task_desc = "receipt/invoice information extraction into a strictly nested JSON structure."
+        focus_areas = "menu items (nm, cnt, price) and total summary (total_price, cashprice, changeprice, subtotal_price, tax_price)"
+        output_constraint = f"""Output JSON format MUST EXACTLY MATCH this schema:
+{template_str}
+
+Rules:
+- Use EXACT keys: "nm", "cnt", "price" inside the "menu" array.
+- Use EXACT keys: "total_price", "cashprice", "changeprice", "subtotal_price", "tax_price" inside the "total" dict.
+- If a field or value is missing in the document, you MUST use an empty string "". Do not omit the key."""
     
     elif dataset == "funsd":
         task_desc = "form understanding and key-value extraction. Extract form fields and their relationships."
@@ -1154,9 +1160,15 @@ def build_extraction_prompts_hierarchical(dataset: str, role: str, question: str
         output_constraint = f"Valid relation names: {rel_names_list}\nUse EXACT relation name strings. Use head_id/tail_id (integer indices from the entity list) instead of entity names."
     
     elif dataset == "cord":
-        task_desc = "receipt/invoice extraction"
-        focus_areas = "menu items, prices, totals, tax"
-        output_constraint = "Fill the 'menu' array with all items, and populate subtotal/total/tax fields with exact numeric values."
+        task_desc = "receipt/invoice information extraction into a strictly nested JSON structure"
+        focus_areas = "menu items (nm, cnt, price) and total summary (total_price, cashprice, changeprice, subtotal_price, tax_price)"
+        output_constraint = f"""Output JSON format MUST EXACTLY MATCH this schema:
+{template_str}
+
+Rules:
+- Use EXACT keys: "nm", "cnt", "price" inside the "menu" array.
+- Use EXACT keys: "total_price", "cashprice", "changeprice", "subtotal_price", "tax_price" inside the "total" dict.
+- Missing values MUST be empty strings ""."""
     
     elif dataset == "funsd":
         task_desc = "form understanding"
@@ -1300,7 +1312,7 @@ Output Format:
 
 Instructions:
 1. Extract ALL menu items with prices
-2. Calculate subtotal, tax, and total amounts
+2. Output valid JSON matching the exact keys in the schema
 3. Output valid JSON matching the schema
 
 Output the extracted information as JSON:
