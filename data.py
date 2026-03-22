@@ -378,28 +378,11 @@ def load_cord(
 ) -> Iterable[Dict]:
     """
     Load CORD dataset for receipt/invoice extraction.
-    Supports official CORD format from samples.json:
-    Format: {"menu": [{"nm": str, "cnt": str, "price": str}], "total": {"total_price": str, "cashprice": str, "changeprice": str, "subtotal_price": str, "tax_price": str}}
-    Supports multimodal input with image_path parameter or filepath field in data.
+    支持双模加载：如果传入了真实有效的本地路径，则读取本地；否则从 Hugging Face 自动拉取。
     """
     import json
     import os
     from PIL import Image
-    
-    if not os.path.exists(doc_path):
-        raise FileNotFoundError(f"CORD file not found: {doc_path}")
-    
-    with open(doc_path, 'r', encoding='utf-8') as f:
-        if doc_path.endswith('.json'):
-            data = json.load(f)
-        else:
-            # Plain text OCR output
-            full_text = f.read()
-            data = [{"text": full_text}]
-    
-    # Handle official CORD format with "samples" wrapper
-    if isinstance(data, dict) and "samples" in data:
-        data = data["samples"]
     
     # Standard CORD extraction schema (official nested format)
     extract_template = {
@@ -414,40 +397,167 @@ def load_cord(
             "tax_price": ""
         }
     }
-    
-    for doc in (data if isinstance(data, list) else [data]):
-        # Load image from filepath field or parameter
-        image_obj = None
-        doc_image_path = doc.get("filepath") or image_path
-        if doc_image_path:
-            # Handle relative path from doc_path directory
-            if not os.path.isabs(doc_image_path):
-                base_dir = os.path.dirname(doc_path)
-                doc_image_path = os.path.join(base_dir, doc_image_path)
-            
-            if os.path.exists(doc_image_path):
-                try:
-                    image_obj = Image.open(doc_image_path).convert("RGB")
-                except Exception as e:
-                    print(f"[Warning] Failed to load image from {doc_image_path}: {e}")
-        
-        # Extract text and ground truth
-        full_text = doc.get("text", "")
-        
-        # Build ground truth from official CORD gt_parse (nested menu/total)
-        raw_gt_parse = doc.get("gt_parse", {}) if isinstance(doc, dict) else {}
-        has_gt_parse = isinstance(raw_gt_parse, dict) and ("menu" in raw_gt_parse or "total" in raw_gt_parse)
-        gold = {"menu": [], "total": {
-            "total_price": "",
-            "cashprice": "",
-            "changeprice": "",
-            "subtotal_price": "",
-            "tax_price": ""
-        }}
 
-        if has_gt_parse:
+    # --- 内部辅助函数：统一处理三种 mode 的 yield ---
+    def _yield_by_mode(text_content, gold_json, img_obj):
+        if mode == "full":
+            result = {
+                "question": text_content,
+                "solution": json.dumps(gold_json, ensure_ascii=False),
+                "gold": json.dumps(gold_json, ensure_ascii=False),
+                "extract_template": json.dumps(extract_template, ensure_ascii=False),
+                "dataset": "cord",
+            }
+            if img_obj:
+                result["image"] = img_obj
+            yield result
+        
+        elif mode == "chunks":
+            chunks = []
+            start = 0
+            while start < len(text_content):
+                end = start + chunk_size
+                chunks.append(text_content[start:end])
+                start = end - overlap
+            
+            for i, chunk in enumerate(chunks):
+                result = {
+                    "question": chunk,
+                    "solution": json.dumps(gold_json, ensure_ascii=False),
+                    "gold": json.dumps(gold_json, ensure_ascii=False),
+                    "extract_template": json.dumps(extract_template, ensure_ascii=False),
+                    "chunk_info": f"Chunk {i+1}/{len(chunks)}",
+                    "dataset": "cord",
+                }
+                if img_obj:
+                    result["image"] = img_obj
+                yield result
+        
+        elif mode == "partitioned":
+            partition_size = len(text_content) // num_partitions
+            for i in range(num_partitions):
+                start = i * partition_size
+                end = start + partition_size if i < num_partitions - 1 else len(text_content)
+                
+                result = {
+                    "question": text_content[start:end],
+                    "solution": json.dumps(gold_json, ensure_ascii=False),
+                    "gold": json.dumps(gold_json, ensure_ascii=False),
+                    "extract_template": json.dumps(extract_template, ensure_ascii=False),
+                    "partition_info": f"Partition {i+1}/{num_partitions}",
+                    "dataset": "cord",
+                }
+                if img_obj:
+                    result["image"] = img_obj
+                yield result
+
+    # ==========================================
+    # 模式 A: 从本地路径加载
+    # ==========================================
+    if doc_path and doc_path.lower() != "dummy" and os.path.exists(doc_path):
+        print(f"📂 检测到本地路径，正在从本地加载 CORD 数据集: {doc_path}")
+        with open(doc_path, 'r', encoding='utf-8') as f:
+            if doc_path.endswith('.json'):
+                data = json.load(f)
+            else:
+                full_text = f.read()
+                data = [{"text": full_text}]
+        
+        if isinstance(data, dict) and "samples" in data:
+            data = data["samples"]
+        
+        for doc in (data if isinstance(data, list) else [data]):
+            image_obj = None
+            doc_image_path = doc.get("filepath") or image_path
+            if doc_image_path:
+                if not os.path.isabs(doc_image_path):
+                    base_dir = os.path.dirname(doc_path)
+                    doc_image_path = os.path.join(base_dir, doc_image_path)
+                if os.path.exists(doc_image_path):
+                    try:
+                        image_obj = Image.open(doc_image_path).convert("RGB")
+                    except Exception as e:
+                        print(f"[Warning] Failed to load image from {doc_image_path}: {e}")
+            
+            full_text = doc.get("text", "")
+            raw_gt_parse = doc.get("gt_parse", {}) if isinstance(doc, dict) else {}
+            has_gt_parse = isinstance(raw_gt_parse, dict) and ("menu" in raw_gt_parse or "total" in raw_gt_parse)
+            
+            gold = {"menu": [], "total": {
+                "total_price": "", "cashprice": "", "changeprice": "", "subtotal_price": "", "tax_price": ""
+            }}
+
+            if has_gt_parse:
+                clean_menu = []
+                for m in raw_gt_parse.get("menu", []):
+                    if isinstance(m, dict):
+                        clean_menu.append({
+                            "nm": str(m.get("nm", "")),
+                            "cnt": str(m.get("cnt", "")),
+                            "price": str(m.get("price", ""))
+                        })
+
+                raw_total = raw_gt_parse.get("total", {})
+                if not isinstance(raw_total, dict):
+                    raw_total = {}
+
+                clean_total = {
+                    "total_price": str(raw_total.get("total_price", "")),
+                    "cashprice": str(raw_total.get("cashprice", "")),
+                    "changeprice": str(raw_total.get("changeprice", "")),
+                    "subtotal_price": str(raw_total.get("subtotal_price", "")),
+                    "tax_price": str(raw_total.get("tax_price", ""))
+                }
+                gold = {"menu": clean_menu, "total": clean_total}
+            
+            elif "ground_truth" in doc:
+                gold = doc["ground_truth"]
+            
+            if not full_text and image_obj:
+                full_text = "[Image-based receipt]"
+            
+            yield from _yield_by_mode(full_text, gold, image_obj)
+
+    # ==========================================
+    # 模式 B: 从 Hugging Face 云端加载
+    # ==========================================
+    else:
+        from datasets import load_dataset
+        
+        hf_split = "validation" if split == "valid" else split
+        print(f"⏳ 未检测到有效本地路径，正在从 HuggingFace 加载 CORD-v2 ({hf_split} split)...")
+        
+        dataset = load_dataset("naver-clova-ix/cord-v2", split=hf_split, cache_dir=cache_dir)
+        
+        for idx, item in enumerate(dataset):
+            # 1. 处理图片与缩放防爆显存
+            pil_image = item["image"]
+            if pil_image.mode != "RGB":
+                pil_image = pil_image.convert("RGB")
+                
+            max_pixels = 1024
+            if max(pil_image.size) > max_pixels:
+                ratio = max_pixels / max(pil_image.size)
+                new_size = (int(pil_image.size[0] * ratio), int(pil_image.size[1] * ratio))
+                pil_image = pil_image.resize(new_size, Image.Resampling.LANCZOS)
+                
+            # 2. 提取 OCR 文本用于辅助
+            ground_truth = json.loads(item["ground_truth"])
+            ocr_text = ""
+            for line in ground_truth.get("valid_line", []):
+                words = [w.get("text", "") for w in line.get("words", [])]
+                ocr_text += " ".join(words) + "\n"
+                
+            # 3. 鲁棒清洗嵌套 JSON 格式
+            raw_gt_parse = ground_truth.get("gt_parse", {})
+            raw_menu = raw_gt_parse.get("menu", [])
+            if isinstance(raw_menu, dict):
+                raw_menu = [raw_menu]
+            elif not isinstance(raw_menu, list):
+                raw_menu = []
+                
             clean_menu = []
-            for m in raw_gt_parse.get("menu", []):
+            for m in raw_menu:
                 if isinstance(m, dict):
                     clean_menu.append({
                         "nm": str(m.get("nm", "")),
@@ -455,10 +565,7 @@ def load_cord(
                         "price": str(m.get("price", ""))
                     })
 
-            raw_total = raw_gt_parse.get("total", {})
-            if not isinstance(raw_total, dict):
-                raw_total = {}
-
+            raw_total = raw_gt_parse.get("total", {}) if isinstance(raw_gt_parse.get("total"), dict) else {}
             clean_total = {
                 "total_price": str(raw_total.get("total_price", "")),
                 "cashprice": str(raw_total.get("cashprice", "")),
@@ -466,67 +573,13 @@ def load_cord(
                 "subtotal_price": str(raw_total.get("subtotal_price", "")),
                 "tax_price": str(raw_total.get("tax_price", ""))
             }
-
             gold = {"menu": clean_menu, "total": clean_total}
-        
-        # Fallback to custom ground_truth field if present
-        if (not has_gt_parse) and "ground_truth" in doc:
-            gold = doc["ground_truth"]
-        
-        # If no text but has image, use placeholder
-        if not full_text and image_obj:
-            full_text = "[Image-based receipt]"
-        
-        if mode == "full":
-            result = {
-                "question": full_text,
-                "solution": json.dumps(gold, ensure_ascii=False),
-                "gold": json.dumps(gold, ensure_ascii=False),
-                "extract_template": json.dumps(extract_template, ensure_ascii=False),
-                "dataset": "cord",
-            }
-            if image_obj:
-                result["image"] = image_obj  # Add image object for multimodal processing
-            yield result
-        
-        elif mode == "chunks":
-            chunks = []
-            start = 0
-            while start < len(full_text):
-                end = start + chunk_size
-                chunks.append(full_text[start:end])
-                start = end - overlap
             
-            for i, chunk in enumerate(chunks):
-                result = {
-                    "question": chunk,
-                    "solution": json.dumps(gold, ensure_ascii=False),
-                    "gold": json.dumps(gold, ensure_ascii=False),
-                    "extract_template": json.dumps(extract_template, ensure_ascii=False),
-                    "chunk_info": f"Chunk {i+1}/{len(chunks)}",
-                    "dataset": "cord",
-                }
-                if image_obj:
-                    result["image"] = image_obj
-                yield result
-        
-        elif mode == "partitioned":
-            partition_size = len(full_text) // num_partitions
-            for i in range(num_partitions):
-                start = i * partition_size
-                end = start + partition_size if i < num_partitions - 1 else len(full_text)
-                
-                result = {
-                    "question": full_text[start:end],
-                    "solution": json.dumps(gold, ensure_ascii=False),
-                    "gold": json.dumps(gold, ensure_ascii=False),
-                    "extract_template": json.dumps(extract_template, ensure_ascii=False),
-                    "partition_info": f"Partition {i+1}/{num_partitions}",
-                    "dataset": "cord",
-                }
-                if image_obj:
-                    result["image"] = image_obj
-                yield result
+            full_text = ocr_text.strip()
+            if not full_text:
+                full_text = "[Image-based receipt]"
+
+            yield from _yield_by_mode(full_text, gold, pil_image)
 
 
 def load_funsd(
