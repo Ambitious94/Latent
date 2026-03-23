@@ -590,37 +590,18 @@ def load_funsd(
     overlap: int = 250,
     num_partitions: int = 3,
     cache_dir: Optional[str] = None,
-    image_path: Optional[str] = None,  # New parameter for multimodal support
-    annotations_dir: Optional[str] = None,  # Directory containing segm_file JSONs
-    images_dir: Optional[str] = None  # Directory containing form images
+    image_path: Optional[str] = None,
+    annotations_dir: Optional[str] = None,
+    images_dir: Optional[str] = None
 ) -> Iterable[Dict]:
     """
     Load FUNSD dataset for form understanding.
-    
-    Supports two formats:
-    1. Official COCO-style: instances_test.json with images, categories, annotations
-       - Requires annotations_dir for segm_file JSONs containing entities/relations
-       - Requires images_dir for form images
-    2. Simple format: {"text": "...", "entities": [...], "relations": [...]}
-    
-    Output format: {"entities": [{"text": "", "label": "question/answer/header/other", "box": []}], 
-                    "relations": [{"head": 0, "tail": 1, "type": "answer_to"}]}
+    支持双模加载：传入 dummy 则从 Hugging Face 加载 (支持 konfuzio/funsd_plus 关系链接)，否则从本地加载。
     """
     import json
     import os
     from PIL import Image
-    
-    if not os.path.exists(doc_path):
-        raise FileNotFoundError(f"FUNSD file not found: {doc_path}")
-    
-    with open(doc_path, 'r', encoding='utf-8') as f:
-        if doc_path.endswith('.json'):
-            data = json.load(f)
-        else:
-            full_text = f.read()
-            data = [{"text": full_text}]
-    
-    # Standard FUNSD extraction schema
+
     extract_template = {
         "entities": [
             {"text": "", "label": "", "box": []}
@@ -629,10 +610,127 @@ def load_funsd(
             {"head": 0, "tail": 1, "type": ""}
         ]
     }
+
+    # ==========================================
+    # 模式 B: 从 Hugging Face 云端加载 (支持 FUNSD+)
+    # ==========================================
+    if doc_path == "dummy" or not os.path.exists(doc_path):
+        from datasets import load_dataset
+        
+        # FUNSD+ 在 HF 上的验证集名为 'test'
+        hf_split = "test" if split == "valid" else split
+        print(f"⏳ 未检测到有效本地路径，正在从 HuggingFace 加载 FUNSD+ (konfuzio/funsd_plus - {hf_split} split)...")
+        
+        dataset = load_dataset("konfuzio/funsd_plus", split=hf_split, cache_dir=cache_dir)
+        
+        # 尝试动态获取标签映射，失败则回退到默认的 FUNSD 标签
+        try:
+            int2str = dataset.features['labels'].feature.int2str
+        except Exception:
+            id2tag = {0: "O", 1: "B-HEADER", 2: "I-HEADER", 3: "B-QUESTION", 4: "I-QUESTION", 5: "B-ANSWER", 6: "I-ANSWER"}
+            int2str = lambda x: id2tag.get(x, "O")
+            
+        for idx, item in enumerate(dataset):
+            pil_image = item["image"]
+            if pil_image.mode != "RGB":
+                pil_image = pil_image.convert("RGB")
+                
+            max_pixels = 1024
+            if max(pil_image.size) > max_pixels:
+                ratio = max_pixels / max(pil_image.size)
+                new_size = (int(pil_image.size[0] * ratio), int(pil_image.size[1] * ratio))
+                pil_image = pil_image.resize(new_size, Image.Resampling.LANCZOS)
+                
+            words = item.get("words", [])
+            bboxes = item.get("bboxes", [])
+            labels = item.get("labels", [])
+            grouped_words = item.get("grouped_words", [])
+            linked_groups = item.get("linked_groups", [])
+            doc_id = str(item.get("id", idx))
+            
+            entities = []
+            relations = []
+            
+            # 优先使用 FUNSD+ 的 grouped_words 精准划分实体
+            if grouped_words:
+                for group_id, word_indices in enumerate(grouped_words):
+                    if not word_indices: continue
+                    text = " ".join([words[i] for i in word_indices if i < len(words)])
+                    group_boxes = [bboxes[i] for i in word_indices if i < len(bboxes)]
+                    
+                    if group_boxes:
+                        box = [
+                            min(b[0] for b in group_boxes), min(b[1] for b in group_boxes),
+                            max(b[2] for b in group_boxes), max(b[3] for b in group_boxes)
+                        ]
+                    else:
+                        box = [0, 0, 0, 0]
+                        
+                    raw_label_val = labels[word_indices[0]] if word_indices[0] < len(labels) else 0
+                    raw_label = int2str(raw_label_val) if isinstance(raw_label_val, int) else str(raw_label_val)
+                    clean_label = raw_label.replace("B-", "").replace("I-", "").lower()
+                    if clean_label == "o": clean_label = "other"
+                    
+                    entities.append({"id": group_id, "text": text, "label": clean_label, "box": box})
+                    
+                # 解析 FUNSD+ 的关系链接
+                if linked_groups:
+                    for link in linked_groups:
+                        if len(link) >= 2:
+                            relations.append({"head": link[0], "tail": link[1], "type": "linked"})
+                            
+            gold = {"entities": entities, "relations": relations}
+            full_text = " ".join(words)
+            
+            # --- 内部的分发模式逻辑 ---
+            if mode == "full":
+                yield {
+                    "question": full_text,
+                    "solution": json.dumps(gold, ensure_ascii=False),
+                    "gold": json.dumps(gold, ensure_ascii=False),
+                    "extract_template": json.dumps(extract_template, ensure_ascii=False),
+                    "dataset": "funsd",
+                    "doc_id": doc_id,
+                    "image": pil_image
+                }
+            elif mode == "chunks":
+                yield {
+                    "question": full_text,
+                    "solution": json.dumps(gold, ensure_ascii=False),
+                    "gold": json.dumps(gold, ensure_ascii=False),
+                    "extract_template": json.dumps(extract_template, ensure_ascii=False),
+                    "chunk_info": f"Image {doc_id}",
+                    "dataset": "funsd",
+                    "doc_id": doc_id,
+                    "image": pil_image
+                }
+            elif mode == "partitioned":
+                yield {
+                    "question": full_text,
+                    "solution": json.dumps(gold, ensure_ascii=False),
+                    "gold": json.dumps(gold, ensure_ascii=False),
+                    "extract_template": json.dumps(extract_template, ensure_ascii=False),
+                    "partition_info": f"Image {doc_id}",
+                    "dataset": "funsd",
+                    "doc_id": doc_id,
+                    "image": pil_image
+                }
+        
+        # HF 分支结束，直接返回
+        return  
+
+    # ==========================================
+    # 模式 A: 从本地路径加载 (保留官方代码原样)
+    # ==========================================
+    print(f"📂 检测到本地路径，正在从本地加载 FUNSD 数据集: {doc_path}")
+    with open(doc_path, 'r', encoding='utf-8') as f:
+        if doc_path.endswith('.json'):
+            data = json.load(f)
+        else:
+            full_text = f.read()
+            data = [{"text": full_text}]
     
-    # Detect COCO-style format (official FUNSD)
     if isinstance(data, dict) and "images" in data and "annotations" in data:
-        # COCO-style format
         base_dir = os.path.dirname(doc_path)
         ann_dir = annotations_dir or os.path.join(base_dir, "annotations")
         img_dir = images_dir or os.path.join(base_dir, "images")
@@ -642,7 +740,6 @@ def load_funsd(
             segm_file = img_info.get("segm_file", "")
             image_id = img_info.get("id")
             
-            # Load image
             image_obj = None
             if img_dir:
                 img_path = os.path.join(img_dir, file_name)
@@ -652,7 +749,6 @@ def load_funsd(
                     except Exception as e:
                         print(f"[Warning] Failed to load image {img_path}: {e}")
             
-            # Load segm_file for entities and relations
             gold = {"entities": [], "relations": []}
             full_text = ""
             
@@ -662,7 +758,6 @@ def load_funsd(
                     try:
                         with open(segm_path, 'r', encoding='utf-8') as sf:
                             segm_data = json.load(sf)
-                            # Parse FUNSD segm format
                             if "form" in segm_data:
                                 form = segm_data["form"]
                                 texts = []
@@ -676,7 +771,6 @@ def load_funsd(
                                     gold["entities"].append(entity)
                                     texts.append(item.get("text", ""))
                                     
-                                    # Extract linking relations
                                     for link in item.get("linking", []):
                                         gold["relations"].append({
                                             "head": link[0],
@@ -685,125 +779,17 @@ def load_funsd(
                                         })
                                 full_text = " ".join(texts)
                     except Exception as e:
-                        print(f"[Warning] Failed to load segm_file {segm_path}: {e}")
+                        pass
             
-            # If no segm_file, extract from COCO annotations
-            if not full_text:
-                # Get annotations for this image
-                img_anns = [a for a in data["annotations"] if a.get("image_id") == image_id]
-                full_text = f"[Form image: {file_name}]"
-                gold = {"entities": [], "annotations_count": len(img_anns)}
-            
-            if not full_text and image_obj:
-                full_text = f"[Form image: {file_name}]"
+            if not full_text and image_obj: full_text = f"[Form image: {file_name}]"
             
             if mode == "full":
-                result = {
-                    "question": full_text,
-                    "solution": json.dumps(gold, ensure_ascii=False),
-                    "gold": json.dumps(gold, ensure_ascii=False),
-                    "extract_template": json.dumps(extract_template, ensure_ascii=False),
-                    "dataset": "funsd",
-                    "doc_id": file_name,
-                }
-                if image_obj:
-                    result["image"] = image_obj
-                yield result
-            
+                yield {"question": full_text, "solution": json.dumps(gold, ensure_ascii=False), "gold": json.dumps(gold, ensure_ascii=False), "extract_template": json.dumps(extract_template, ensure_ascii=False), "dataset": "funsd", "doc_id": file_name, **({"image": image_obj} if image_obj else {})}
             elif mode == "chunks":
-                # For COCO format with chunks mode - treat each image as one item
-                result = {
-                    "question": full_text,
-                    "solution": json.dumps(gold, ensure_ascii=False),
-                    "gold": json.dumps(gold, ensure_ascii=False),
-                    "extract_template": json.dumps(extract_template, ensure_ascii=False),
-                    "chunk_info": f"Image {file_name}",
-                    "dataset": "funsd",
-                    "doc_id": file_name,
-                }
-                if image_obj:
-                    result["image"] = image_obj
-                yield result
-            
+                yield {"question": full_text, "solution": json.dumps(gold, ensure_ascii=False), "gold": json.dumps(gold, ensure_ascii=False), "extract_template": json.dumps(extract_template, ensure_ascii=False), "chunk_info": f"Image {file_name}", "dataset": "funsd", "doc_id": file_name, **({"image": image_obj} if image_obj else {})}
             elif mode == "partitioned":
-                # For COCO format, each image is a partition
-                result = {
-                    "question": full_text,
-                    "solution": json.dumps(gold, ensure_ascii=False),
-                    "gold": json.dumps(gold, ensure_ascii=False),
-                    "extract_template": json.dumps(extract_template, ensure_ascii=False),
-                    "partition_info": f"Image {file_name}",
-                    "dataset": "funsd",
-                }
-                if image_obj:
-                    result["image"] = image_obj
-                yield result
-        
-        return  # Exit after processing COCO format
-    
-    # Simple format processing
-    # Load image if path provided (for multimodal)
-    image_obj = None
-    if image_path and os.path.exists(image_path):
-        try:
-            image_obj = Image.open(image_path).convert("RGB")
-        except Exception as e:
-            print(f"[Warning] Failed to load image from {image_path}: {e}")
-    
-    for doc in (data if isinstance(data, list) else [data]):
-        full_text = doc.get("text", "") or str(doc)
-        gold = doc.get("annotations", {})
-        
-        if mode == "full":
-            result = {
-                "question": full_text,
-                "solution": json.dumps(gold, ensure_ascii=False),
-                "gold": json.dumps(gold, ensure_ascii=False),
-                "extract_template": json.dumps(extract_template, ensure_ascii=False),
-                "dataset": "funsd",
-            }
-            if image_obj:
-                result["image"] = image_obj
-            yield result
-        
-        elif mode == "chunks":
-            chunks = []
-            start = 0
-            while start < len(full_text):
-                end = start + chunk_size
-                chunks.append(full_text[start:end])
-                start = end - overlap
-            
-            for i, chunk in enumerate(chunks):
-                result = {
-                    "question": chunk,
-                    "solution": json.dumps(gold, ensure_ascii=False),
-                    "gold": json.dumps(gold, ensure_ascii=False),
-                    "extract_template": json.dumps(extract_template, ensure_ascii=False),
-                    "chunk_info": f"Chunk {i+1}/{len(chunks)}",
-                    "dataset": "funsd",
-                }
-                if image_obj:
-                    result["image"] = image_obj
-                yield result
-        
-        elif mode == "partitioned":
-            partition_size = len(full_text) // num_partitions
-            for i in range(num_partitions):
-                start = i * partition_size
-                end = start + partition_size if i < num_partitions - 1 else len(full_text)
-                
-                result = {
-                    "question": full_text[start:end],
-                    "solution": json.dumps(gold, ensure_ascii=False),
-                    "gold": json.dumps(gold, ensure_ascii=False),
-                    "extract_template": json.dumps(extract_template, ensure_ascii=False),
-                    "partition_info": f"Partition {i+1}/{num_partitions}",
-                    "dataset": "funsd",
-                }
-                if image_obj:
-                    result["image"] = image_obj
-                yield result
+                yield {"question": full_text, "solution": json.dumps(gold, ensure_ascii=False), "gold": json.dumps(gold, ensure_ascii=False), "extract_template": json.dumps(extract_template, ensure_ascii=False), "partition_info": f"Image {file_name}", "dataset": "funsd", **({"image": image_obj} if image_obj else {})}
+        return
 
 
 def load_finer(

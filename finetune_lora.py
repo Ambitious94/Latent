@@ -51,37 +51,15 @@ class DocumentExtractionDataset(Dataset):
         if self.task == "funsd":
             instruction = """Task: Extract form fields and their semantic relationships.
 
-Identify form entities with these labels:
-- question: Field labels or prompts ("Name:", "Date of Birth:", "Address:")
-- answer: Filled-in values or responses
-- header: Section titles or form headers
-- other: Other text elements
+Identify form entities and assign each a unique integer "id" (0, 1, 2...).
+Valid labels: question, answer, header, other.
 
 Identify relations:
-- Link questions to their corresponding answers
-- Use entity text for matching
+- Link questions to their corresponding answers.
+- Use the entity's integer "id" for "head" (the question) and "tail" (the answer).
 
 Output JSON format:
-{"entities": [{"text": "Name:", "label": "question"}, {"text": "John Smith", "label": "answer"}], "relations": [{"head": "Name:", "tail": "John Smith"}]}
-
-Example:
-Form text: "Employee Name: Sarah Johnson | Department: Engineering | Salary: $85,000"
-Output:
-{
-  "entities": [
-    {"text": "Employee Name:", "label": "question"},
-    {"text": "Sarah Johnson", "label": "answer"},
-    {"text": "Department:", "label": "question"},
-    {"text": "Engineering", "label": "answer"},
-    {"text": "Salary:", "label": "question"},
-    {"text": "$85,000", "label": "answer"}
-  ],
-  "relations": [
-    {"head": "Employee Name:", "tail": "Sarah Johnson"},
-    {"head": "Department:", "tail": "Engineering"},
-    {"head": "Salary:", "tail": "$85,000"}
-  ]
-}"""
+{"entities": [{"id": 0, "text": "Name:", "label": "question"}, {"id": 1, "text": "John Smith", "label": "answer"}], "relations": [{"head": 0, "tail": 1, "type": "linked"}]}"""
         
         elif self.task == "docred":
             # DocRED: 索引抽取 + 语义化关系名 + Evidence CoT

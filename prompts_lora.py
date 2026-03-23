@@ -76,7 +76,17 @@ Document:
 Output JSON with relations:
 """
         else:
-            user_prompt = f"""Task: {task}
+            if dataset == "funsd":
+                user_prompt = f"""Task: {task}
+
+Document:
+{question}
+
+Output complete JSON. 
+CRITICAL: Every entity MUST have a unique integer "id". Relations MUST link entities using their integer "id" for "head" and "tail".
+"""
+            else:
+                user_prompt = f"""Task: {task}
 
 Document:
 {question}
@@ -164,7 +174,17 @@ Document:
 Combine all partitions and output JSON:
 """
         else:
-            user_prompt = f"""Task: {task}
+            if dataset == "funsd":
+                user_prompt = f"""Task: {task}
+
+Document:
+{question}
+
+Combine all partitions and output JSON. 
+CRITICAL: Every entity MUST have a unique integer "id". Relations MUST link entities using their integer "id" for "head" and "tail".
+"""
+            else:
+                user_prompt = f"""Task: {task}
 
 Document:
 {question}

@@ -964,9 +964,15 @@ Rules:
 - If a field or value is missing in the document, you MUST use an empty string "". Do not omit the key."""
     
     elif dataset == "funsd":
-        task_desc = "form understanding and key-value extraction. Extract form fields and their relationships."
-        focus_areas = "form entities (questions, answers, headers, other text), spatial relationships between fields"
-        output_constraint = "Fill 'entities' array with all text elements and their labels, 'relations' array with question-answer pairs."
+        task_desc = "form understanding and key-value extraction"
+        focus_areas = "form entities (questions, answers, headers, other text) and their linking relationships"
+        output_constraint = f"""Output JSON format MUST EXACTLY MATCH this schema:
+{template_str}
+
+Rules:
+- Every entity MUST have a unique integer "id".
+- Use EXACT labels: "question", "answer", "header", "other".
+- Relations MUST link entities using their integer "id" for "head" and "tail", with type "linked"."""
     
     elif dataset == "finer":
         task_desc = "fine-grained financial entity recognition (FinER)."
@@ -1171,9 +1177,15 @@ Rules:
 - Missing values MUST be empty strings ""."""
     
     elif dataset == "funsd":
-        task_desc = "form understanding"
-        focus_areas = "form fields, questions, answers, relationships"
-        output_constraint = "Fill 'entities' array with all text elements and their labels, 'relations' array with question-answer pairs."
+        task_desc = "form understanding and key-value extraction"
+        focus_areas = "form entities (questions, answers, headers, other text) and their linking relationships"
+        output_constraint = f"""Output JSON format MUST EXACTLY MATCH this schema:
+{template_str}
+
+Rules:
+- Every entity MUST have a unique integer "id".
+- Use EXACT labels: "question", "answer", "header", "other".
+- Relations MUST link entities using their integer "id" for "head" and "tail", with type "linked"."""
     
     elif dataset == "finer":
         task_desc = "fine-grained financial entity recognition (FinER)."
@@ -1817,37 +1829,16 @@ Output the JSON directly with no explanation."""
     elif dataset == "funsd":
         instruction = """Task: Extract form fields and their semantic relationships.
 
-Identify form entities with these labels:
-- question: Field labels or prompts ("Name:", "Date of Birth:", "Address:")
-- answer: Filled-in values or responses
-- header: Section titles or form headers
-- other: Other text elements
+Identify form entities and assign each a unique integer "id" (0, 1, 2...).
+Valid labels: question, answer, header, other.
 
 Identify relations:
-- Link questions to their corresponding answers
-- Use entity text for matching
+- Link questions to their corresponding answers.
+- Use the entity's integer "id" for "head" (the question) and "tail" (the answer).
 
 Output JSON format:
-{"entities": [{"text": "Name:", "label": "question"}, {"text": "John Smith", "label": "answer"}], "relations": [{"head": "Name:", "tail": "John Smith"}]}
-
-Example:
-Form text: "Employee Name: Sarah Johnson | Department: Engineering | Salary: $85,000"
-Output:
-{
-  "entities": [
-    {"text": "Employee Name:", "label": "question"},
-    {"text": "Sarah Johnson", "label": "answer"},
-    {"text": "Department:", "label": "question"},
-    {"text": "Engineering", "label": "answer"},
-    {"text": "Salary:", "label": "question"},
-    {"text": "$85,000", "label": "answer"}
-  ],
-  "relations": [
-    {"head": "Employee Name:", "tail": "Sarah Johnson"},
-    {"head": "Department:", "tail": "Engineering"},
-    {"head": "Salary:", "tail": "$85,000"}
-  ]
-}"""
+{"entities": [{"id": 0, "text": "Name:", "label": "question"}, {"id": 1, "text": "John Smith", "label": "answer"}], "relations": [{"head": 0, "tail": 1, "type": "linked"}]}
+"""
     
     elif dataset == "cord":
         instruction = """Task: Extract receipt/invoice information from OCR text or image into a nested JSON structure.

@@ -332,15 +332,34 @@ def evaluate_funsd(predictions: List[Dict], golds: List[Dict]) -> Dict[str, floa
         pred_ents = pred_data.get("entities", [])
         gold_ents = gold_data.get("entities", [])
         
-        pred_entities.extend([(e.get("text", ""), e.get("label", "")) for e in pred_ents])
-        gold_entities.extend([(e.get("text", ""), e.get("label", "")) for e in gold_ents])
+        # 新增：建立 ID 到 Text 的映射字典，用于解析关系
+        pred_id2text = {e.get("id"): str(e.get("text", "")).strip() for e in pred_ents if "id" in e}
+        gold_id2text = {e.get("id"): str(e.get("text", "")).strip() for e in gold_ents if "id" in e}
         
-        # Extract relations
+        # 提取实体 (忽略 ID，只对比提取的文本和标签)
+        pred_entities.extend([(str(e.get("text", "")).strip(), e.get("label", "")) for e in pred_ents if e.get("text")])
+        gold_entities.extend([(str(e.get("text", "")).strip(), e.get("label", "")) for e in gold_ents if e.get("text")])
+        
+        # 提取关系并智能解析
         pred_rels = pred_data.get("relations", [])
         gold_rels = gold_data.get("relations", [])
         
-        pred_relations.extend([(r.get("head", ""), r.get("tail", ""), r.get("type", "")) for r in pred_rels])
-        gold_relations.extend([(r.get("head", ""), r.get("tail", ""), r.get("type", "")) for r in gold_rels])
+        for r in pred_rels:
+            head_val = r.get("head")
+            tail_val = r.get("tail")
+            # 如果是数字ID，则去映射表里找对应的文本；如果没找到，就回退为字符串
+            head_text = pred_id2text.get(head_val, str(head_val) if head_val is not None else "")
+            tail_text = pred_id2text.get(tail_val, str(tail_val) if tail_val is not None else "")
+            if head_text and tail_text:
+                pred_relations.append((head_text, tail_text, r.get("type", "linked")))
+                
+        for r in gold_rels:
+            head_val = r.get("head")
+            tail_val = r.get("tail")
+            head_text = gold_id2text.get(head_val, str(head_val) if head_val is not None else "")
+            tail_text = gold_id2text.get(tail_val, str(tail_val) if tail_val is not None else "")
+            if head_text and tail_text:
+                gold_relations.append((head_text, tail_text, r.get("type", "linked")))
     
     # Calculate entity metrics
     pred_ent_set = set(pred_entities)
