@@ -1307,15 +1307,12 @@ Output the extracted information as JSON:
 Document:
 {question}
 
+{output_constraint}
+
 Output Format:
 {template_str}
 
-Instructions:
-1. Extract ALL menu items with prices
-2. Output valid JSON matching the exact keys in the schema
-3. Output valid JSON matching the schema
-
-Output the extracted information as JSON:
+You have latent info from all partitions. Output the final extraction as JSON:
 """
         elif dataset == "finer":
             user_prompt = f"""Task: {task_desc}
@@ -1425,9 +1422,15 @@ def build_extraction_prompts_text_mas_sequential(dataset: str, role: str, questi
         rel_names_list = ", ".join(f'"{name}"' for name in DOCRED_REL_MAP.values())
         output_constraint = f"Valid relation names: {rel_names_list}\nUse EXACT relation name strings. Use head_id/tail_id (integer indices from the entity list) instead of entity names."
     elif dataset == "cord":
-        task_desc = "receipt/invoice information extraction"
-        focus_areas = "menu items, prices, subtotal, total, tax"
-        output_constraint = "Fill menu array with items, populate subtotal/total/tax fields."
+        task_desc = "receipt/invoice information extraction into a strictly nested JSON structure."
+        focus_areas = "menu items (nm, cnt, price) and total summary (total_price, cashprice, changeprice, subtotal_price, tax_price)"
+        output_constraint = f"""Output JSON format MUST EXACTLY MATCH this schema:
+{template_str}
+
+Rules:
+- Use EXACT keys: "nm", "cnt", "price" inside the "menu" array.
+- Use EXACT keys: "total_price", "cashprice", "changeprice", "subtotal_price", "tax_price" inside the "total" dict.
+- Missing values MUST be empty strings ""."""
     elif dataset == "funsd":
         task_desc = "form understanding and key-value extraction"
         focus_areas = "form fields (questions, answers, headers)"
@@ -1514,8 +1517,9 @@ Output the organized, complete list of extracted information.
 Entities (use ONLY these):
 {entity_list}
 """
-        
-        user_prompt = f"""Task: {task_desc}
+
+        if dataset == "docred":
+            user_prompt = f"""Task: {task_desc}
 
 {docred_entity_section}Document:
 {question}
@@ -1537,6 +1541,24 @@ Rules:
 - relation must be an exact natural-language name from the valid list.
 - ANTI-HALLUCINATION: Do NOT fabricate relations using pure external common sense. Prefer text-grounded inference; implicit cross-sentence relations are valid.
 - INVERSE RELATIONS: If a relation logically implies its inverse, extract BOTH directions.
+
+Previous agents found:
+{context}
+
+Begin your analysis:
+"""
+        else:
+            # 针对 CORD, FUNSD, FinER 等任务的通用正确输出格式
+            user_prompt = f"""Task: {task_desc}
+
+Document:
+{question}
+
+{output_constraint}
+
+Instructions:
+1. First, analyze the document and reason about the items based on previous findings (write your thinking)
+2. Then output FINAL JSON EXACTLY matching the required schema.
 
 Previous agents found:
 {context}
@@ -1582,9 +1604,15 @@ def build_extraction_prompts_text_mas_hierarchical(dataset: str, role: str, ques
         rel_names_list = ", ".join(f'"{name}"' for name in DOCRED_REL_MAP.values())
         output_constraint = f"Valid relation names: {rel_names_list}\nUse EXACT relation name strings. Use head_id/tail_id (integer indices from the entity list) instead of entity names."
     elif dataset == "cord":
-        task_desc = "receipt/invoice information extraction"
-        focus_areas = "menu items, prices, subtotal, total, tax"
-        output_constraint = "Fill menu array with items, populate subtotal/total/tax fields."
+        task_desc = "receipt/invoice information extraction into a strictly nested JSON structure."
+        focus_areas = "menu items (nm, cnt, price) and total summary (total_price, cashprice, changeprice, subtotal_price, tax_price)"
+        output_constraint = f"""Output JSON format MUST EXACTLY MATCH this schema:
+{template_str}
+
+Rules:
+- Use EXACT keys: "nm", "cnt", "price" inside the "menu" array.
+- Use EXACT keys: "total_price", "cashprice", "changeprice", "subtotal_price", "tax_price" inside the "total" dict.
+- Missing values MUST be empty strings ""."""
     elif dataset == "funsd":
         task_desc = "form understanding and key-value extraction"
         focus_areas = "form fields (questions, answers, headers)"
@@ -1677,7 +1705,8 @@ Entities (use ONLY these):
 {entity_list}
 """
         
-        user_prompt = f"""Task: {task_desc}
+        if dataset == "docred":
+            user_prompt = f"""Task: {task_desc}
 
 {docred_entity_section}Document:
 {question}
@@ -1699,6 +1728,23 @@ Rules:
 - relation must be an exact natural-language name from the valid list.
 - ANTI-HALLUCINATION: Do NOT fabricate relations using pure external common sense. Prefer text-grounded inference; implicit cross-sentence relations are valid.
 - INVERSE RELATIONS: If a relation logically implies its inverse, extract BOTH directions.
+
+Partition findings:
+{context}
+
+Begin your analysis:
+"""
+        else:
+            user_prompt = f"""Task: {task_desc}
+
+Document:
+{question}
+
+{output_constraint}
+
+Instructions:
+1. First, analyze the document and reason about the items based on previous partition findings (write your thinking)
+2. Then output FINAL JSON EXACTLY matching the required schema.
 
 Partition findings:
 {context}
