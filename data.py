@@ -604,10 +604,10 @@ def load_funsd(
 
     extract_template = {
         "entities": [
-            {"text": "", "label": "", "box": []}
+            {"id": 0, "text": "", "label": ""}
         ],
         "relations": [
-            {"head": 0, "tail": 1, "type": ""}
+            {"head": 0, "tail": 1, "type": "linked"}
         ]
     }
 
