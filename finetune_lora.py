@@ -467,12 +467,18 @@ def main():
     print(f"Loading model: {args.model_name}")
     
     if args.use_vision_model:
-        # 加载VL模型
-        from transformers import AutoProcessor
-        model = AutoModelForVision2Seq.from_pretrained(
+        from transformers import AutoModelForImageTextToText, AutoProcessor
+        import os
+
+        # 核心修复：获取当前进程分配的专属 GPU ID
+        local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+        device_map = {"": local_rank}
+
+        model = AutoModelForImageTextToText.from_pretrained(
             args.model_name,
             torch_dtype=torch.bfloat16,
-            device_map="auto"
+            device_map=device_map,  # 强制绑定，杜绝显卡互相踩踏
+            attn_implementation="flash_attention_2"  # 开启显存和速度的魔法加速
         )
         processor = AutoProcessor.from_pretrained(args.model_name)
     else:
@@ -568,7 +574,7 @@ def main():
         fp16=not use_bf16,
         gradient_checkpointing=True,  # 开启，节省显存
         gradient_checkpointing_kwargs={"use_reentrant": False},
-        dataloader_num_workers=0,
+        dataloader_num_workers=2,  # 让 CPU 提前 2 线程准备图片数据，GPU不再空等
         remove_unused_columns=False,
         report_to="none"
     )
