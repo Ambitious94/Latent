@@ -642,7 +642,6 @@ def load_funsd(
                 pil_image = pil_image.resize(new_size, Image.Resampling.LANCZOS)
                 
             words = item.get("words", [])
-            bboxes = item.get("bboxes", [])
             labels = item.get("labels", [])
             grouped_words = item.get("grouped_words", [])
             linked_groups = item.get("linked_groups", [])
@@ -656,22 +655,13 @@ def load_funsd(
                 for group_id, word_indices in enumerate(grouped_words):
                     if not word_indices: continue
                     text = " ".join([words[i] for i in word_indices if i < len(words)])
-                    group_boxes = [bboxes[i] for i in word_indices if i < len(bboxes)]
-                    
-                    if group_boxes:
-                        box = [
-                            min(b[0] for b in group_boxes), min(b[1] for b in group_boxes),
-                            max(b[2] for b in group_boxes), max(b[3] for b in group_boxes)
-                        ]
-                    else:
-                        box = [0, 0, 0, 0]
                         
                     raw_label_val = labels[word_indices[0]] if word_indices[0] < len(labels) else 0
                     raw_label = int2str(raw_label_val) if isinstance(raw_label_val, int) else str(raw_label_val)
                     clean_label = raw_label.replace("B-", "").replace("I-", "").lower()
                     if clean_label == "o": clean_label = "other"
                     
-                    entities.append({"id": group_id, "text": text, "label": clean_label, "box": box})
+                    entities.append({"id": group_id, "text": text, "label": clean_label})
                     
                 # 解析 FUNSD+ 的关系链接
                 if linked_groups:
@@ -763,10 +753,9 @@ def load_funsd(
                                 texts = []
                                 for item in form:
                                     entity = {
+                                        "id": item.get("id"),
                                         "text": item.get("text", ""),
-                                        "label": item.get("label", "other"),
-                                        "box": item.get("box", []),
-                                        "id": item.get("id")
+                                        "label": item.get("label", "other")
                                     }
                                     gold["entities"].append(entity)
                                     texts.append(item.get("text", ""))
