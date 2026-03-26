@@ -1445,8 +1445,14 @@ Rules:
 - Missing values MUST be empty strings ""."""
     elif dataset == "funsd":
         task_desc = "form understanding and key-value extraction"
-        focus_areas = "form fields (questions, answers, headers)"
-        output_constraint = "Fill entities and relations arrays."
+        focus_areas = "form entities (questions, answers, headers, other text) and their linking relationships"
+        output_constraint = f"""Output JSON format MUST EXACTLY MATCH this schema:
+{template_str}
+
+Rules:
+- Every entity MUST have a unique integer "id".
+- Use EXACT labels: "question", "answer", "header", "other".
+- Relations MUST link entities using their integer "id" for "head" and "tail", with type "linked"."""
     elif dataset == "finer":
         task_desc = "fine-grained financial entity recognition (FinER)."
         focus_areas = "financial entities and their corresponding XBRL tags"
