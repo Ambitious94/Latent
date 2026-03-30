@@ -919,13 +919,13 @@ def load_chemprot(split: str = "train", max_samples: Optional[int] = None) -> It
     # 使用 bigbio_kb schema，它把实体和关系整理得最好
     dataset = load_dataset("bigbio/chemprot", "chemprot_bigbio_kb", split=split)
 
-    # ChemProt 常用的5大类关系映射
+    # 仅保留官方打榜的 5 种核心关系，但键名必须是小写，以匹配 bigbio 的真实数据
     valid_relations = {
-        "CPR:3": "UPREGULATOR",
-        "CPR:4": "DOWNREGULATOR",
-        "CPR:5": "AGONIST",
-        "CPR:6": "ANTAGONIST",
-        "CPR:9": "SUBSTRATE",
+        "up-regulator": "UPREGULATOR",
+        "down-regulator": "DOWNREGULATOR",
+        "agonist": "AGONIST",
+        "antagonist": "ANTAGONIST",
+        "substrate": "SUBSTRATE"
     }
 
     count = 0
@@ -947,7 +947,7 @@ def load_chemprot(split: str = "train", max_samples: Optional[int] = None) -> It
         for rel in item.get("relations", []):
             if not isinstance(rel, dict):
                 continue
-            rel_type = rel.get("type", "")
+            rel_type = str(rel.get("type", "")).lower()
             # 仅提取有效的5大类交互关系
             if rel_type in valid_relations:
                 arg1_id = rel.get("arg1_id")

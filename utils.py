@@ -136,7 +136,7 @@ def evaluate_prediction(task: str, final_text: str, item: Dict, idx: int = 0) ->
             ok = False
             error_msg = f'Value error in parsing answer. Pred: {pred}, Gold: {gold}'
 
-    elif task in ['docred', 'cord', 'funsd', 'finer']:
+    elif task in ['docred', 'cord', 'funsd', 'finer', 'chemprot']:
         pred = final_text.strip()
         gold = item.get("gold", "{}")
         error_msg = None

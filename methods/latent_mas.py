@@ -105,7 +105,7 @@ class LatentMASMethod:
         for agent in self.agents:
 
             # Route to extraction prompts for document extraction datasets
-            if self.args.task in ['docred', 'cord', 'funsd', 'finer']:
+            if self.args.task in ['docred', 'cord', 'funsd', 'finer', 'chemprot']:
                 # 原始模型使用详细prompts
                 from prompts import build_extraction_prompts_sequential, build_extraction_prompts_hierarchical
                 if self.args.prompt == "sequential":
@@ -334,7 +334,7 @@ class LatentMASMethod:
         for agent in self.agents:
             
             # Route to extraction prompts for document extraction datasets
-            if self.args.task in ['docred', 'cord', 'funsd', 'finer']:
+            if self.args.task in ['docred', 'cord', 'funsd', 'finer', 'chemprot']:
                 from prompts import build_extraction_prompts_sequential, build_extraction_prompts_hierarchical
                 if self.args.prompt == "sequential":
                     batch_messages = [

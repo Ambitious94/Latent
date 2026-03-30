@@ -43,7 +43,7 @@ class TextMASMethod:
         for agent in self.agents:
 
             # Route to extraction prompts for document extraction datasets
-            if self.args.task in ['docred', 'cord', 'funsd', 'finer']:
+            if self.args.task in ['docred', 'cord', 'funsd', 'finer', 'chemprot']:
                 from prompts import build_extraction_prompts_text_mas_sequential, build_extraction_prompts_text_mas_hierarchical
                 if self.args.prompt == "hierarchical":
                     batch_messages = [

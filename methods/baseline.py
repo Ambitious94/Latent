@@ -33,7 +33,7 @@ class BaselineMethod:
         batch_messages = []
         for item in items:
             # 针对信息抽取任务，使用与微调绝对一致的 LoRA 专属提示词
-            if self.task in ['docred', 're-docred', 're_docred', 'cord', 'funsd', 'finer']:
+            if self.task in ['docred', 're-docred', 're_docred', 'cord', 'funsd', 'finer', 'chemprot']:
                 # 把 re-docred 映射为 docred 的模板
                 prompt_task = "docred" if "docred" in self.task else self.task
                 msg = build_lora_extraction_prompt(dataset=prompt_task, question=item["question"], item=item, args=self.args)
