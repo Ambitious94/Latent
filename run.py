@@ -18,7 +18,7 @@ from data import (
     load_docred,
     load_cord,
     load_funsd,
-    load_finer
+    load_chemprot
 )
 from methods.baseline import BaselineMethod
 from methods.latent_mas import LatentMASMethod
@@ -43,7 +43,7 @@ _SIMPLE_LOADERS = {
 }
 
 # Extraction tasks requiring doc_path
-_EXTRACTION_TASKS = {"docred", "cord", "funsd", "finer"}
+_EXTRACTION_TASKS = {"docred", "cord", "funsd", "chemprot"}
 
 
 def _resolve_extraction_mode(args) -> str:
@@ -57,7 +57,7 @@ def _resolve_extraction_mode(args) -> str:
 
 def _load_extraction_dataset(args):
     """Load extraction dataset based on task name."""
-    if not args.doc_path:
+    if args.task != "chemprot" and not args.doc_path:
         raise ValueError(f"--doc_path is required for {args.task} task")
 
     mode = _resolve_extraction_mode(args)
@@ -81,8 +81,8 @@ def _load_extraction_dataset(args):
             annotations_dir=args.annotations_dir,
             images_dir=args.image_dir,
         )
-    elif args.task == "finer":
-        return load_finer(**common)
+    elif args.task == "chemprot":
+        return load_chemprot(split=args.split)
     else:
         raise ValueError(f"Unknown extraction task: {args.task}")
 
@@ -171,14 +171,14 @@ def main():
     parser.add_argument("--model_name", type=str, required=True,
                         help="Model name to use (e.g. 'Qwen/Qwen3-14B', 'Qwen/Qwen2-VL-7B-Instruct').")
     parser.add_argument("--max_samples", type=int, default=-1, help="Number of questions to evaluate; set -1 to use all samples.")
-    parser.add_argument("--task", choices=["gsm8k", "aime2024", "aime2025", "gpqa", "arc_easy", "arc_challenge", "mbppplus", 'humanevalplus', 'medqa', 'docred', 'cord', 'funsd', 'finer'], default="gsm8k",
+    parser.add_argument("--task", choices=["gsm8k", "aime2024", "aime2025", "gpqa", "arc_easy", "arc_challenge", "mbppplus", 'humanevalplus', 'medqa', 'docred', 'cord', 'funsd', 'chemprot'], default="gsm8k",
                         help="Dataset/task to evaluate. Controls which loader is used.")
     parser.add_argument("--prompt", type=str, choices=["sequential", "hierarchical"], default="sequential", help="Multi-agent system architecture: 'sequential' or 'hierarchical'.")
 
     # other args
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--split", type=str, default="test")
-    parser.add_argument("--doc_path", type=str, default=None, help="Path to document file (for docred/cord/funsd/finer tasks)")
+    parser.add_argument("--doc_path", type=str, default=None, help="Path to document file (for docred/cord/funsd/chemprot tasks)")
     parser.add_argument("--train_path", type=str, default="./data/train_annotated.json", help="Full path to train file for official Re-DocRED Ign-F1 evaluation")
     parser.add_argument("--extraction_mode", type=str, choices=["full", "chunks", "partitioned"], default="full", 
                         help="Document processing mode: 'full' (recommended for DocRED), 'chunks' for sequential, 'partitioned' for hierarchical")
@@ -337,7 +337,7 @@ def main():
     total_time = time.time() - start_time
 
     # 根据任务类型选择评估方式
-    extraction_tasks = ["docred", "cord", "funsd", "finer"]
+    extraction_tasks = ["docred", "cord", "funsd", "chemprot"]
     
     if args.task in extraction_tasks:
         # 文档抽取任务：使用专门的评估指标

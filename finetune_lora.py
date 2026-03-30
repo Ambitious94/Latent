@@ -19,11 +19,11 @@ import json
 import torch
 import argparse
 from typing import List, Dict
-from transformers import AutoModelForVision2Seq, AutoProcessor, TrainingArguments, Trainer
+from transformers import TrainingArguments, Trainer
 from peft import LoraConfig, get_peft_model, TaskType
 from torch.utils.data import Dataset
 from PIL import Image
-from data import load_funsd, load_docred, load_cord, load_finer
+from data import load_funsd, load_docred, load_cord, load_chemprot
 from prompts import DOCRED_REL_MAP
 
 
@@ -143,19 +143,17 @@ Rules:
 Output JSON format example:
 {"menu": [{"nm": "EGG TART", "cnt": "1", "price": "13,000"}], "total": {"total_price": "13,000", "cashprice": "15,000", "changeprice": "2,000"}}"""
         
-        elif self.task == "finer":
-            instruction = """Task: Fine-grained financial entity recognition (FinER).
+        elif self.task == "chemprot":
+            instruction = """Task: chemical-protein relation extraction.
 
-Identify and extract financial entities and their corresponding XBRL tags from the text.
-
-Output JSON format:
-{"entities": [{"text": "entity_text", "type": "XBRL_Tag_Name", "start": 0, "end": 10}]}
+Output JSON format MUST EXACTLY MATCH this schema:
+{"relations": [{"head": "chemical_name", "relation": "ACTIVATOR", "tail": "protein_name"}]}
 
 Rules:
-- start/end are character positions in the original text (0-based).
-- text is the exact string of the entity.
-- type must be the exact financial XBRL tag corresponding to the entity.
-- If no financial entities are found, output {"entities": []}."""
+- "head" MUST be the chemical compound.
+- "tail" MUST be the gene or protein.
+- "relation" MUST be one of the following exact interaction types: UPREGULATOR, DOWNREGULATOR, AGONIST, ANTAGONIST, SUBSTRATE.
+- If no relations exist in the text, output {"relations": []}."""
         else:
             instruction = "Task: Extract information"
         
@@ -348,11 +346,10 @@ def load_training_data(args):
     elif args.task == "cord":
         # CORD 加载已在函数开头通过 HuggingFace 直接加载，此处应不会执行
         raise RuntimeError("CORD 加载应在函数开头完成，如执行到此表示逻辑错误")
-    elif args.task == "finer":
-        data_iter = load_finer(
-            doc_path=args.train_data,
+    elif args.task == "chemprot":
+        data_iter = load_chemprot(
             split="train",
-            mode="full"
+            max_samples=args.max_train_samples
         )
     else:
         raise ValueError(f"Unsupported task: {args.task}")
@@ -360,15 +357,6 @@ def load_training_data(args):
     data_items = []
     import json
     for item in data_iter:
-        # 仅对 finer 任务过滤空实体样本，避免影响其他任务的数据格式
-        if args.task == "finer":
-            try:
-                gold_data = json.loads(item["gold"])
-                if len(gold_data.get("entities", [])) == 0:
-                    continue  # 忽略 FinER 的空样本
-            except Exception:
-                pass
-
         data_items.append(item)
         if args.max_train_samples is not None and args.max_train_samples > 0 and len(data_items) >= args.max_train_samples:
             break
@@ -437,7 +425,7 @@ def vl_data_collator(features: List[Dict]) -> Dict:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-VL-4B-Instruct")
-    parser.add_argument("--task", type=str, required=True, choices=["funsd", "docred", "cord", "finer"])
+    parser.add_argument("--task", type=str, required=True, choices=["funsd", "docred", "cord", "chemprot"])
     parser.add_argument("--train_data", type=str, required=True)
     parser.add_argument("--annotations_dir", type=str, default=None)
     parser.add_argument("--image_dir", type=str, default=None)
@@ -455,7 +443,7 @@ def main():
     
     # 自动检测是否应该使用VL模型
     if not args.use_vision_model:
-        # FUNSD和CORD默认使用VL模型，DocRED和FinER使用文本模型
+        # FUNSD和CORD默认使用VL模型，DocRED和ChemProt使用文本模型
         if args.task in ["funsd", "cord"]:
             args.use_vision_model = True
             print(f"[Auto] Task {args.task} detected, using vision-language model")
@@ -468,16 +456,12 @@ def main():
     
     if args.use_vision_model:
         from transformers import AutoModelForImageTextToText, AutoProcessor
-        import os
-
-        # 核心修复：获取当前进程分配的专属 GPU ID
-        local_rank = int(os.environ.get("LOCAL_RANK", "0"))
-        device_map = {"": local_rank}
+        
 
         model = AutoModelForImageTextToText.from_pretrained(
             args.model_name,
             torch_dtype=torch.bfloat16,
-            device_map=device_map,  # 强制绑定，杜绝显卡互相踩踏
+            device_map="auto",  
             attn_implementation="flash_attention_2"  # 开启显存和速度的魔法加速
         )
         processor = AutoProcessor.from_pretrained(args.model_name)
@@ -574,7 +558,7 @@ def main():
         fp16=not use_bf16,
         gradient_checkpointing=True,  # 开启，节省显存
         gradient_checkpointing_kwargs={"use_reentrant": False},
-        dataloader_num_workers=2,  # 让 CPU 提前 2 线程准备图片数据，GPU不再空等
+        dataloader_num_workers=0,  # 让 CPU 提前 2 线程准备图片数据，GPU不再空等
         remove_unused_columns=False,
         report_to="none"
     )

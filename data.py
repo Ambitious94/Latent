@@ -909,3 +909,70 @@ def load_finer(
                     "partition_info": f"Partition {i+1}/{num_partitions}",
                     "dataset": "finer",
                 }
+
+
+def load_chemprot(split: str = "train", max_samples: Optional[int] = None) -> Iterable[Dict]:
+    from datasets import load_dataset
+    import json
+
+    print("⏳ 正在从 HuggingFace 加载 ChemProt 数据集...")
+    # 使用 bigbio_kb schema，它把实体和关系整理得最好
+    dataset = load_dataset("bigbio/chemprot", "chemprot_bigbio_kb", split=split)
+
+    # ChemProt 常用的5大类关系映射
+    valid_relations = {
+        "CPR:3": "UPREGULATOR",
+        "CPR:4": "DOWNREGULATOR",
+        "CPR:5": "AGONIST",
+        "CPR:6": "ANTAGONIST",
+        "CPR:9": "SUBSTRATE",
+    }
+
+    count = 0
+    for item in dataset:
+        passages = item.get("passages", [])
+        text = " ".join([p.get("text", [""])[0] for p in passages if isinstance(p, dict)]).strip()
+
+        # 建立实体ID到文本的映射，用于解析关系
+        id2text = {}
+        for ent in item.get("entities", []):
+            if isinstance(ent, dict):
+                ent_id = ent.get("id")
+                ent_text = ent.get("text", [""])
+                ent_text = ent_text[0] if isinstance(ent_text, list) and ent_text else ""
+                if ent_id:
+                    id2text[ent_id] = ent_text
+
+        relations = []
+        for rel in item.get("relations", []):
+            if not isinstance(rel, dict):
+                continue
+            rel_type = rel.get("type", "")
+            # 仅提取有效的5大类交互关系
+            if rel_type in valid_relations:
+                arg1_id = rel.get("arg1_id")
+                arg2_id = rel.get("arg2_id")
+                head_text = id2text.get(arg1_id, "")
+                tail_text = id2text.get(arg2_id, "")
+                if head_text and tail_text:
+                    relations.append({
+                        "head": head_text,
+                        "relation": valid_relations[rel_type],
+                        "tail": tail_text,
+                    })
+
+        gold_json = {"relations": relations}
+
+        yield {
+            "question": text,
+            "gold": json.dumps(gold_json, ensure_ascii=False),
+            "solution": json.dumps(gold_json, ensure_ascii=False),
+            "extract_template": '{"relations": [{"head": "", "relation": "", "tail": ""}]}',
+            "dataset": "chemprot",
+        }
+
+        count += 1
+        if max_samples and count >= max_samples:
+            break
+
+    print(f"Loaded {count} ChemProt samples.")

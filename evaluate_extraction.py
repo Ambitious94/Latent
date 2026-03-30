@@ -396,6 +396,71 @@ def evaluate_funsd(predictions: List[Dict], golds: List[Dict]) -> Dict[str, floa
     }
 
 
+def evaluate_chemprot(predictions: List[Dict], golds: List[Dict]) -> Dict[str, float]:
+    """
+    评估 ChemProt 化学-蛋白质关系抽取
+    匹配标准: (head_text, relation_type, tail_text) 三元组完全匹配
+    """
+    tp = fp = fn = 0
+
+    for pred, gold in zip(predictions, golds):
+        # 1. 解析预测结果
+        try:
+            pred_data = json.loads(pred.get("prediction", "{}"))
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pred_data = {}
+
+        # 2. 解析金标准
+        gold_data = json.loads(gold) if isinstance(gold, str) else gold
+        if not isinstance(gold_data, dict):
+            gold_data = {}
+
+        # 3. 提取关系列表 (加上类型检查防弹衣)
+        pred_rels_raw = pred_data.get("relations", [])
+        gold_rels_raw = gold_data.get("relations", [])
+        if not isinstance(pred_rels_raw, list):
+            pred_rels_raw = []
+        if not isinstance(gold_rels_raw, list):
+            gold_rels_raw = []
+
+        # 4. 构建三元组集合 (转小写，去除空格，提升鲁棒性)
+        pred_rels = set()
+        for r in pred_rels_raw:
+            if isinstance(r, dict) and "head" in r and "tail" in r and "relation" in r:
+                h = str(r["head"]).strip().lower()
+                t = str(r["tail"]).strip().lower()
+                rel = str(r["relation"]).strip().lower()
+                if h and t and rel:
+                    pred_rels.add((h, rel, t))
+
+        gold_rels = set()
+        for r in gold_rels_raw:
+            if isinstance(r, dict) and "head" in r and "tail" in r and "relation" in r:
+                h = str(r["head"]).strip().lower()
+                t = str(r["tail"]).strip().lower()
+                rel = str(r["relation"]).strip().lower()
+                if h and t and rel:
+                    gold_rels.add((h, rel, t))
+
+        # 5. 计算交并集
+        tp += len(pred_rels & gold_rels)
+        fp += len(pred_rels - gold_rels)
+        fn += len(gold_rels - pred_rels)
+
+    precision = tp / (tp + fp) if tp + fp > 0 else 0.0
+    recall = tp / (tp + fn) if tp + fn > 0 else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0.0
+
+    return {
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+        "true_positives": tp,
+        "false_positives": fp,
+        "false_negatives": fn
+    }
+
+
 def evaluate_finer(predictions: List[Dict], golds: List[Dict]) -> Dict[str, float]:
     """
     评估 FinER-139 金融实体识别 (严格序列标注模式)
@@ -576,7 +641,7 @@ def evaluate_extraction_task(task: str, predictions: List[Dict], golds: List[Dic
     统一评估接口
     
     Args:
-        task: 'docred', 'cord', 'funsd', 'finer'
+        task: 'docred', 'cord', 'funsd', 'chemprot'
         predictions: 预测结果列表
         golds: 金标准列表
     
@@ -589,8 +654,8 @@ def evaluate_extraction_task(task: str, predictions: List[Dict], golds: List[Dic
         return evaluate_cord(predictions, golds)
     elif task == "funsd":
         return evaluate_funsd(predictions, golds)
-    elif task == "finer":
-        return evaluate_finer(predictions, golds)
+    elif task == "chemprot":
+        return evaluate_chemprot(predictions, golds)
     else:
         return {"error": f"Unknown task: {task}"}
 

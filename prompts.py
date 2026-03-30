@@ -692,20 +692,18 @@ Your response:
 
 
 def build_agent_messages_single_agent(question: str, args=None) -> list[dict]:
-    # ====== 新增：专门拦截 finer 任务，使用与微调绝对一致的 Prompt ======
-    if args and args.task == "finer":
-        instruction = """Task: Fine-grained financial entity recognition (FinER).
+    # ====== 新增：专门拦截 chemprot 任务，使用与微调绝对一致的 Prompt ======
+    if args and args.task == "chemprot":
+        instruction = """Task: chemical-protein relation extraction.
 
-Identify and extract financial entities and their corresponding XBRL tags from the text.
-
-Output JSON format:
-{"entities": [{"text": "entity_text", "type": "XBRL_Tag_Name", "start": 0, "end": 10}]}
+Output JSON format MUST EXACTLY MATCH this schema:
+{"relations": [{"head": "chemical_name", "relation": "ACTIVATOR", "tail": "protein_name"}]}
 
 Rules:
-- start/end are character positions in the original text (0-based).
-- text is the exact string of the entity.
-- type must be the exact financial XBRL tag corresponding to the entity.
-- If no financial entities are found, output {"entities": []}."""
+- "head" MUST be the chemical compound.
+- "tail" MUST be the gene or protein.
+- "relation" MUST be one of the following exact interaction types: UPREGULATOR, DOWNREGULATOR, AGONIST, ANTAGONIST, SUBSTRATE.
+- If no relations exist in the text, output {"relations": []}."""
 
         system_msg = "You are an expert document information extraction system. Extract structured information accurately and output valid JSON only."
         user_msg = f"{instruction}\n\nDocument text:\n{question}\n\nExtract and output JSON:"
@@ -931,7 +929,7 @@ DOCRED_RELATIONS_FULL = """ALL VALID RELATIONS (use these IDs):
 
 def build_extraction_prompts_sequential(dataset: str, role: str, question: str, item: dict, method=None, args=None):
     """
-    Unified extraction prompts for DocRED/CORD/FUNSD/FinER datasets (Sequential mode).
+    Unified extraction prompts for DocRED/CORD/FUNSD/ChemProt datasets (Sequential mode).
     """
     import json
     
@@ -974,17 +972,17 @@ Rules:
 - Use EXACT labels: "question", "answer", "header", "other".
 - Relations MUST link entities using their integer "id" for "head" and "tail", with type "linked"."""
     
-    elif dataset == "finer":
-        task_desc = "fine-grained financial entity recognition (FinER)."
-        focus_areas = "financial entities and their corresponding XBRL tags"
-        output_constraint = """Output JSON format:
-{"entities": [{"text": "entity_text", "type": "XBRL_Tag_Name", "start": 0, "end": 10}]}
+    elif dataset == "chemprot":
+        task_desc = "chemical-protein relation extraction."
+        focus_areas = "chemical compounds, genes/proteins, and their interaction relations"
+        output_constraint = """Output JSON format MUST EXACTLY MATCH this schema:
+{"relations": [{"head": "chemical_name", "relation": "ACTIVATOR", "tail": "protein_name"}]}
 
 Rules:
-- start/end are character positions in the original text (0-based).
-- text is the exact string of the entity.
-- type must be the exact financial XBRL tag corresponding to the entity.
-- If no financial entities are found, output {"entities": []}."""
+- "head" MUST be the chemical compound.
+- "tail" MUST be the gene or protein.
+- "relation" MUST be one of the following exact interaction types: UPREGULATOR, DOWNREGULATOR, AGONIST, ANTAGONIST, SUBSTRATE.
+- If no relations exist in the text, output {"relations": []}."""
     
     else:
         task_desc = "document information extraction."
@@ -1107,21 +1105,16 @@ Rules:
 - INVERSE RELATIONS: If a relation logically implies its inverse (e.g., "parent organization" vs "subsidiary", "contains" vs "located in"), you MUST extract BOTH directions as separate relations if supported by the document text.
 - For companies/organizations, prefer "parent organization" or "subsidiary" over "part of" to match standard annotation guidelines.
 """
-        elif dataset == "finer":
-            instruction = """Task: Fine-grained financial entity recognition (FinER).
+        elif dataset == "chemprot":
+            user_prompt = f"""Task: {task_desc}
 
-Identify and extract financial entities and their corresponding XBRL tags from the text.
+Document:
+{question}
 
-Output JSON format:
-{"entities": [{"text": "entity_text", "type": "XBRL_Tag_Name", "start": 0, "end": 10}]}
+{output_constraint}
 
-Rules:
-- start/end are character positions in the original text (0-based).
-- text is the exact string of the entity.
-- type must be the exact financial XBRL tag corresponding to the entity.
-- If no financial entities are found, output {"entities": []}."""
-
-            user_prompt = f"{instruction}\n\nDocument text:\n{question}\n\nExtract and output JSON:"
+Output the extracted relationships as JSON:
+"""
         else:
             user_prompt = f"""Task: {task_desc}
 
@@ -1145,7 +1138,7 @@ Output the extracted information as JSON:
 
 def build_extraction_prompts_hierarchical(dataset: str, role: str, question: str, item: dict, method=None, args=None):
     """
-    Unified extraction prompts for DocRED/CORD/FUNSD/FinER datasets (Hierarchical mode).
+    Unified extraction prompts for DocRED/CORD/FUNSD/ChemProt datasets (Hierarchical mode).
     """
     import json
     
@@ -1187,17 +1180,17 @@ Rules:
 - Use EXACT labels: "question", "answer", "header", "other".
 - Relations MUST link entities using their integer "id" for "head" and "tail", with type "linked"."""
     
-    elif dataset == "finer":
-        task_desc = "fine-grained financial entity recognition (FinER)."
-        focus_areas = "financial entities and their corresponding XBRL tags"
-        output_constraint = """Output JSON format:
-{"entities": [{"text": "entity_text", "type": "XBRL_Tag_Name", "start": 0, "end": 10}]}
+    elif dataset == "chemprot":
+        task_desc = "chemical-protein relation extraction."
+        focus_areas = "chemical compounds, genes/proteins, and their interaction relations"
+        output_constraint = """Output JSON format MUST EXACTLY MATCH this schema:
+{"relations": [{"head": "chemical_name", "relation": "ACTIVATOR", "tail": "protein_name"}]}
 
 Rules:
-- start/end are character positions in the original text (0-based).
-- text is the exact string of the entity.
-- type must be the exact financial XBRL tag corresponding to the entity.
-- If no financial entities are found, output {"entities": []}."""
+- "head" MUST be the chemical compound.
+- "tail" MUST be the gene or protein.
+- "relation" MUST be one of the following exact interaction types: UPREGULATOR, DOWNREGULATOR, AGONIST, ANTAGONIST, SUBSTRATE.
+- If no relations exist in the text, output {"relations": []}."""
     
     else:
         task_desc = "document extraction"
@@ -1326,21 +1319,18 @@ Output Format:
 
 You have latent info from all partitions. Output the final extraction as JSON:
 """
-        elif dataset == "finer":
+        elif dataset == "chemprot":
             user_prompt = f"""Task: {task_desc}
 
 Document:
 {question}
 
+{output_constraint}
+
 Output Format:
 {template_str}
 
-Instructions:
-1. Extract ALL financial entities from the text
-2. Identify entity types and positions
-3. Output valid JSON with 'entities' array
-
-Output the extracted information as JSON:
+You have latent info from all partitions. Output the final extraction as JSON:
 """
         else:
             user_prompt = f"""Task: {task_desc}
@@ -1453,17 +1443,17 @@ Rules:
 - Every entity MUST have a unique integer "id".
 - Use EXACT labels: "question", "answer", "header", "other".
 - Relations MUST link entities using their integer "id" for "head" and "tail", with type "linked"."""
-    elif dataset == "finer":
-        task_desc = "fine-grained financial entity recognition (FinER)."
-        focus_areas = "financial entities and their corresponding XBRL tags"
-        output_constraint = """Output JSON format:
-{"entities": [{"text": "entity_text", "type": "XBRL_Tag_Name", "start": 0, "end": 10}]}
+    elif dataset == "chemprot":
+        task_desc = "chemical-protein relation extraction."
+        focus_areas = "chemical compounds, genes/proteins, and their interaction relations"
+        output_constraint = """Output JSON format MUST EXACTLY MATCH this schema:
+{"relations": [{"head": "chemical_name", "relation": "ACTIVATOR", "tail": "protein_name"}]}
 
 Rules:
-- start/end are character positions in the original text (0-based).
-- text is the exact string of the entity.
-- type must be the exact financial XBRL tag corresponding to the entity.
-- If no financial entities are found, output {"entities": []}."""
+- "head" MUST be the chemical compound.
+- "tail" MUST be the gene or protein.
+- "relation" MUST be one of the following exact interaction types: UPREGULATOR, DOWNREGULATOR, AGONIST, ANTAGONIST, SUBSTRATE.
+- If no relations exist in the text, output {"relations": []}."""
     else:
         task_desc = "document information extraction"
         focus_areas = "key information"
@@ -1566,7 +1556,7 @@ Previous agents found:
 Begin your analysis:
 """
         else:
-            # 针对 CORD, FUNSD, FinER 等任务的通用正确输出格式
+            # 针对 CORD, FUNSD, ChemProt 等任务的通用正确输出格式
             user_prompt = f"""Task: {task_desc}
 
 Document:
@@ -1635,17 +1625,17 @@ Rules:
         task_desc = "form understanding and key-value extraction"
         focus_areas = "form fields (questions, answers, headers)"
         output_constraint = "Fill entities and relations arrays."
-    elif dataset == "finer":
-        task_desc = "fine-grained financial entity recognition (FinER)."
-        focus_areas = "financial entities and their corresponding XBRL tags"
-        output_constraint = """Output JSON format:
-{"entities": [{"text": "entity_text", "type": "XBRL_Tag_Name", "start": 0, "end": 10}]}
+    elif dataset == "chemprot":
+        task_desc = "chemical-protein relation extraction."
+        focus_areas = "chemical compounds, genes/proteins, and their interaction relations"
+        output_constraint = """Output JSON format MUST EXACTLY MATCH this schema:
+{"relations": [{"head": "chemical_name", "relation": "ACTIVATOR", "tail": "protein_name"}]}
 
 Rules:
-- start/end are character positions in the original text (0-based).
-- text is the exact string of the entity.
-- type must be the exact financial XBRL tag corresponding to the entity.
-- If no financial entities are found, output {"entities": []}."""
+- "head" MUST be the chemical compound.
+- "tail" MUST be the gene or protein.
+- "relation" MUST be one of the following exact interaction types: UPREGULATOR, DOWNREGULATOR, AGONIST, ANTAGONIST, SUBSTRATE.
+- If no relations exist in the text, output {"relations": []}."""
     else:
         task_desc = "document information extraction"
         focus_areas = "key information"
@@ -1869,19 +1859,17 @@ Rules:
 Output JSON format example:
 {"menu": [{"nm": "EGG TART", "cnt": "1", "price": "13,000"}], "total": {"total_price": "13,000", "cashprice": "15,000", "changeprice": "2,000"}}"""
     
-    elif dataset == "finer":
-        instruction = """Task: Fine-grained financial entity recognition (FinER).
+    elif dataset == "chemprot":
+        instruction = """Task: chemical-protein relation extraction.
 
-    Identify and extract financial entities and their corresponding XBRL tags from the text.
+Output JSON format MUST EXACTLY MATCH this schema:
+{"relations": [{"head": "chemical_name", "relation": "ACTIVATOR", "tail": "protein_name"}]}
 
-    Output JSON format:
-    {"entities": [{"text": "entity_text", "type": "XBRL_Tag_Name", "start": 0, "end": 10}]}
-
-    Rules:
-    - start/end are character positions in the original text (0-based).
-    - text is the exact string of the entity.
-    - type must be the exact financial XBRL tag corresponding to the entity.
-    - If no financial entities are found, output {"entities": []}."""
+Rules:
+- "head" MUST be the chemical compound.
+- "tail" MUST be the gene or protein.
+- "relation" MUST be one of the following exact interaction types: UPREGULATOR, DOWNREGULATOR, AGONIST, ANTAGONIST, SUBSTRATE.
+- If no relations exist in the text, output {"relations": []}."""
     
     else:
         instruction = "Task: Extract information from the document."

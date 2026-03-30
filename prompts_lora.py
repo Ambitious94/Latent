@@ -2,7 +2,7 @@
 LoRA微调模型专用Prompts
 
 微调后的模型已经学会了：
-1. 各任务的输出格式（FUNSD/DocRED/CORD/FinER）
+1. 各任务的输出格式（FUNSD/DocRED/CORD/ChemProt）
 2. 实体关系的识别模式
 3. 领域特定的理解能力
 
@@ -30,8 +30,8 @@ def build_lora_extraction_prompts_sequential(dataset: str, role: str, question: 
         task = "Extract receipt information"
     elif dataset == "funsd":
         task = "Extract form fields and relations"
-    elif dataset == "finer":
-        task = "Extract financial entities"
+    elif dataset == "chemprot":
+        task = "Extract chemical-protein relations"
     else:
         task = "Extract information"
     
@@ -85,6 +85,16 @@ Document:
 Output complete JSON. 
 CRITICAL: Every entity MUST have a unique integer "id". Relations MUST link entities using their integer "id" for "head" and "tail".
 """
+            elif dataset == "chemprot":
+                user_prompt = f"""Task: {task}
+
+Document:
+{question}
+
+Output complete JSON.
+CRITICAL: Output schema MUST be {{"relations": [{{"head": "chemical_name", "relation": "UPREGULATOR", "tail": "protein_name"}}]}}.
+CRITICAL: "head" is chemical, "tail" is gene/protein; relation must be one of UPREGULATOR, DOWNREGULATOR, AGONIST, ANTAGONIST, SUBSTRATE.
+"""
             else:
                 user_prompt = f"""Task: {task}
 
@@ -125,8 +135,8 @@ def build_lora_extraction_prompts_hierarchical(dataset: str, role: str, question
         task = "Extract receipt information"
     elif dataset == "funsd":
         task = "Extract form fields and relations"
-    elif dataset == "finer":
-        task = "Extract financial entities"
+    elif dataset == "chemprot":
+        task = "Extract chemical-protein relations"
     else:
         task = "Extract information"
     
@@ -183,6 +193,16 @@ Document:
 Combine all partitions and output JSON. 
 CRITICAL: Every entity MUST have a unique integer "id". Relations MUST link entities using their integer "id" for "head" and "tail".
 """
+            elif dataset == "chemprot":
+                user_prompt = f"""Task: {task}
+
+Document:
+{question}
+
+Combine all partitions and output JSON.
+CRITICAL: Output schema MUST be {{"relations": [{{"head": "chemical_name", "relation": "UPREGULATOR", "tail": "protein_name"}}]}}.
+CRITICAL: "head" is chemical, "tail" is gene/protein; relation must be one of UPREGULATOR, DOWNREGULATOR, AGONIST, ANTAGONIST, SUBSTRATE.
+"""
             else:
                 user_prompt = f"""Task: {task}
 
@@ -214,12 +234,12 @@ def should_use_lora_prompts(args) -> bool:
     
     条件：
     1. 指定了lora_weights参数
-    2. 任务是文档抽取类（docred/cord/funsd/finer）
+    2. 任务是文档抽取类（docred/cord/funsd/chemprot）
     """
     if not hasattr(args, 'lora_weights') or not args.lora_weights:
         return False
     
-    if args.task not in ['docred', 'cord', 'funsd', 'finer']:
+    if args.task not in ['docred', 'cord', 'funsd', 'chemprot']:
         return False
     
     return True
