@@ -218,7 +218,15 @@ def main():
     if args.use_vision_model:
         print("[INFO] Vision model detected, forcing batch_size=1")
         args.generate_bs = 1
-    
+
+    # ChemProt outputs compact JSON (rarely exceeds 512 tokens).
+    # Cap max_new_tokens automatically unless the user explicitly raised it.
+    _CHEMPROT_MAX_TOKENS = 512
+    if args.task == "chemprot" and args.max_new_tokens > _CHEMPROT_MAX_TOKENS:
+        print(f"[INFO] chemprot task: capping max_new_tokens {args.max_new_tokens} → {_CHEMPROT_MAX_TOKENS} "
+              f"(pass --max_new_tokens larger value to override)")
+        args.max_new_tokens = _CHEMPROT_MAX_TOKENS
+
     if args.method == "latent_mas" and args.use_vllm:
         args.use_second_HF_model = True 
         args.enable_prefix_caching = True
@@ -245,9 +253,13 @@ def main():
             args=args
         )
     elif args.method == "text_mas":
+        # For extraction tasks, non-judger agents write analysis (need more tokens),
+        # while the judger outputs compact JSON (already capped by args.max_new_tokens).
+        _text_mas_each = args.max_new_tokens * 2 if args.task in _EXTRACTION_TASKS else args.max_new_tokens
         method = TextMASMethod(
             model,
-            max_new_tokens_each=args.max_new_tokens,
+            max_new_tokens_each=_text_mas_each,
+            max_new_tokens_judger=args.max_new_tokens,
             **common_kwargs,
             generate_bs=args.generate_bs,
             args=args,

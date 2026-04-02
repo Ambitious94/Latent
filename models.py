@@ -111,10 +111,17 @@ class ModelWrapper:
             # Load text-only model
             self.tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
             _ensure_pad_token(self.tokenizer)
+            # Use Flash Attention 2 if available (requires flash-attn package and Ampere+ GPU)
+            _attn_impl = "flash_attention_2" if torch.cuda.is_available() else "eager"
+            try:
+                import flash_attn  # noqa: F401
+            except ImportError:
+                _attn_impl = "eager"
             with torch.no_grad():
                 self.model = AutoModelForCausalLM.from_pretrained(
                     model_name,
                     torch_dtype=(torch.bfloat16 if torch.cuda.is_available() else torch.float32),
+                    attn_implementation=_attn_impl,
                 )
                 
                 # Load LoRA weights if specified
@@ -294,6 +301,7 @@ class ModelWrapper:
         max_new_tokens: int = 256,
         temperature: float = 0.7,
         top_p: float = 0.95,
+        repetition_penalty: float = 1.1,
     ) -> List[str]:
         if not self.vllm_engine:
             raise RuntimeError("vLLM engine not initialized. Pass use_vllm=True to ModelWrapper.")
@@ -301,6 +309,7 @@ class ModelWrapper:
             temperature=temperature,
             top_p=top_p,
             max_tokens=max_new_tokens,
+            repetition_penalty=repetition_penalty,
         )
         outputs = self.vllm_engine.generate(prompts, sampling_params)
         generations = [out.outputs[0].text.strip() for out in outputs]
@@ -373,6 +382,7 @@ class ModelWrapper:
         temperature: float = 0.7,
         top_p: float = 0.95,
         past_key_values: Optional[Tuple] = None,
+        repetition_penalty: float = 1.1,
     ) -> Tuple[List[str], Optional[Tuple]]:
         if input_ids.dim() != 2:
             raise ValueError("input_ids must be 2D with shape [batch, seq_len]")
@@ -402,6 +412,7 @@ class ModelWrapper:
             top_p=top_p,
             do_sample=True,
             pad_token_id=self.tokenizer.pad_token_id,
+            repetition_penalty=repetition_penalty,
             return_dict_in_generate=True,
             output_scores=False,
             past_key_values=past_key_values,
@@ -468,13 +479,13 @@ class ModelWrapper:
                 )
                 attention_mask = torch.cat([past_mask, attention_mask], dim=-1)
 
-        # Build forward kwargs (add vision inputs if present)
+        # Build forward kwargs (add vision inputs if present).
+        # output_hidden_states is set below: False when hook path is available, True as fallback.
         forward_kwargs = {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
             "past_key_values": past_key_values,
             "use_cache": True,
-            "output_hidden_states": True,
             "return_dict": True,
         }
         if self.is_vision_model and pixel_values is not None:
@@ -482,27 +493,33 @@ class ModelWrapper:
             if image_grid_thw is not None:
                 forward_kwargs["image_grid_thw"] = image_grid_thw
 
-        outputs = self.model(**forward_kwargs)
+        # Use a forward hook to capture only the last layer's last-token hidden state,
+        # avoiding output_hidden_states=True which stores all 28+ layer tensors.
+        _captured_hidden: List[Optional[torch.Tensor]] = [None]
+
+        def _last_hidden_hook(module, inp, out):
+            h = out[0] if isinstance(out, tuple) else out
+            _captured_hidden[0] = h[:, -1, :]
+
+        inner = getattr(self.model, 'model', None)
+        layers = getattr(inner, 'layers', None) if inner is not None else None
+        if layers is not None:
+            _hook_handle = layers[-1].register_forward_hook(_last_hidden_hook)
+            outputs = self.model(**{**forward_kwargs, "output_hidden_states": False})
+            _hook_handle.remove()
+            last_hidden = _captured_hidden[0]
+        else:
+            # Fallback for non-standard architectures
+            outputs = self.model(**{**forward_kwargs, "output_hidden_states": True})
+            last_hidden = outputs.hidden_states[-1][:, -1, :]
+
         past = outputs.past_key_values
-
-        e_t = outputs.hidden_states[0][:, -1, :]          # [B, D]
-        last_hidden = outputs.hidden_states[-1][:, -1, :] # [B, D]
-        h_t = last_hidden.detach().clone()
-
-        e_t_plus_1 = None
-        latent_vecs_all: List[torch.Tensor] = []
-        latent_vecs_all.append(e_t.detach().clone())
 
         for step in range(latent_steps):
 
             source_model = self.HF_model if hasattr(self, "HF_model") else self.model
             latent_vec = self._apply_latent_realignment(last_hidden, source_model)
 
-            latent_vecs_all.append(latent_vec.detach().clone())
-
-            if step == 0:
-                e_t_plus_1 = latent_vec.detach().clone()
-            
             latent_embed = latent_vec.unsqueeze(1)
 
             past_len = _past_length(past)
@@ -548,19 +565,48 @@ class ModelWrapper:
                     device=attention_mask.device,
                 )
                 attention_mask = torch.cat([past_mask, attention_mask], dim=-1)
-        outputs = self.HF_model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            past_key_values=past_key_values,
-            use_cache=True,
-            output_hidden_states=True,
-            return_dict=True,
-        )
+        # Compute input embedding directly (avoids output_hidden_states for embed layer)
+        _inner_hf = getattr(self.HF_model, 'model', None)
+        _embed_tokens = getattr(_inner_hf, 'embed_tokens', None) if _inner_hf is not None else None
+        if _embed_tokens is not None:
+            input_embedding = _embed_tokens(input_ids)
+        else:
+            input_embedding = self.HF_model.get_input_embeddings()(input_ids)
+
+        # Hook to capture last layer's last-token hidden state only
+        _cap: List[Optional[torch.Tensor]] = [None]
+        def _hid_hook(module, inp, out):
+            h = out[0] if isinstance(out, tuple) else out
+            _cap[0] = h[:, -1, :]
+
+        _hf_layers = getattr(_inner_hf, 'layers', None) if _inner_hf is not None else None
+        if _hf_layers is not None:
+            _hh = _hf_layers[-1].register_forward_hook(_hid_hook)
+            outputs = self.HF_model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                past_key_values=past_key_values,
+                use_cache=True,
+                output_hidden_states=False,
+                return_dict=True,
+            )
+            _hh.remove()
+            last_hidden = _cap[0]
+        else:
+            outputs = self.HF_model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                past_key_values=past_key_values,
+                use_cache=True,
+                output_hidden_states=True,
+                return_dict=True,
+            )
+            last_hidden = outputs.hidden_states[-1][:, -1, :]
+
         past = outputs.past_key_values
-        last_hidden = outputs.hidden_states[-1][:, -1, :]
-        
-        curr_output_embedding = [] 
-        curr_output_embedding.append(outputs.hidden_states[0])  # input embedding
+
+        curr_output_embedding = []
+        curr_output_embedding.append(input_embedding)  # input embedding
         
         
         for _ in range(latent_steps):
