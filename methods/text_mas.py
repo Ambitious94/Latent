@@ -14,6 +14,7 @@ class TextMASMethod:
         model: ModelWrapper,
         *,
         max_new_tokens_each: int = 256,
+        max_new_tokens_judger: int = None,
         temperature: float = 0.7,
         top_p: float = 0.95,
         generate_bs: int = 1,
@@ -21,7 +22,7 @@ class TextMASMethod:
     ) -> None:
         self.model = model
         self.max_new_tokens_each = max_new_tokens_each
-        self.max_new_tokens_judger = max_new_tokens_each
+        self.max_new_tokens_judger = max_new_tokens_judger if max_new_tokens_judger is not None else max_new_tokens_each
         self.temperature = temperature
         self.top_p = top_p
         self.generate_bs = max(1, generate_bs)
@@ -98,10 +99,11 @@ class TextMASMethod:
                 batch_messages, add_generation_prompt=True
             )
 
+            _max_tok = self.max_new_tokens_judger if agent.role == "judger" else self.max_new_tokens_each
             if self.model.use_vllm:
                 generated_texts = self.model.vllm_generate_text_batch(
                     prompts,
-                    max_new_tokens=self.max_new_tokens_each,
+                    max_new_tokens=_max_tok,
                     temperature=self.temperature,
                     top_p=self.top_p,
                 )
@@ -109,7 +111,7 @@ class TextMASMethod:
                 generated_texts, _ = self.model.generate_text_batch(
                     input_ids,
                     attention_mask,
-                    max_new_tokens=self.max_new_tokens_each,
+                    max_new_tokens=_max_tok,
                     temperature=self.temperature,
                     top_p=self.top_p,
                 )
