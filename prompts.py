@@ -1106,14 +1106,21 @@ Rules:
 - For companies/organizations, prefer "parent organization" or "subsidiary" over "part of" to match standard annotation guidelines.
 """
         elif dataset == "chemprot":
-            user_prompt = f"""Task: {task_desc}
+            user_prompt = f"""Task: chemical-protein relation extraction.
 
-Document:
+Output JSON format MUST EXACTLY MATCH this schema:
+{{"relations": [{{"head": "chemical_name", "relation": "ACTIVATOR", "tail": "protein_name"}}]}}
+
+Rules:
+- "head" MUST be the chemical compound.
+- "tail" MUST be the gene or protein.
+- "relation" MUST be one of the following exact interaction types: UPREGULATOR, DOWNREGULATOR, AGONIST, ANTAGONIST, SUBSTRATE.
+- If no relations exist in the text, output {{"relations": []}}.
+
+Document text:
 {question}
 
-{output_constraint}
-
-Output the extracted relationships as JSON:
+Extract and output JSON:
 """
         else:
             user_prompt = f"""Task: {task_desc}
@@ -1320,17 +1327,21 @@ Output Format:
 You have latent info from all partitions. Output the final extraction as JSON:
 """
         elif dataset == "chemprot":
-            user_prompt = f"""Task: {task_desc}
+            user_prompt = f"""Task: chemical-protein relation extraction.
 
-Document:
+Output JSON format MUST EXACTLY MATCH this schema:
+{{"relations": [{{"head": "chemical_name", "relation": "ACTIVATOR", "tail": "protein_name"}}]}}
+
+Rules:
+- "head" MUST be the chemical compound.
+- "tail" MUST be the gene or protein.
+- "relation" MUST be one of the following exact interaction types: UPREGULATOR, DOWNREGULATOR, AGONIST, ANTAGONIST, SUBSTRATE.
+- If no relations exist in the text, output {{"relations": []}}.
+
+Document text:
 {question}
 
-{output_constraint}
-
-Output Format:
-{template_str}
-
-You have latent info from all partitions. Output the final extraction as JSON:
+Extract and output JSON:
 """
         else:
             user_prompt = f"""Task: {task_desc}

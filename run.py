@@ -253,9 +253,14 @@ def main():
             args=args
         )
     elif args.method == "text_mas":
-        # For extraction tasks, non-judger agents write analysis (need more tokens),
-        # while the judger outputs compact JSON (already capped by args.max_new_tokens).
-        _text_mas_each = args.max_new_tokens * 2 if args.task in _EXTRACTION_TASKS else args.max_new_tokens
+        # ChemProt is a short single-abstract task; non-judger analysis needs far fewer tokens.
+        # Other extraction tasks may have longer documents so keep 2× headroom.
+        if args.task == "chemprot":
+            _text_mas_each = 256
+        elif args.task in _EXTRACTION_TASKS:
+            _text_mas_each = args.max_new_tokens * 2
+        else:
+            _text_mas_each = args.max_new_tokens
         method = TextMASMethod(
             model,
             max_new_tokens_each=_text_mas_each,

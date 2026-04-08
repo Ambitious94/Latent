@@ -53,6 +53,7 @@ class LatentMASMethod:
                 temperature=temperature,
                 top_p=top_p,
                 max_tokens=args.max_new_tokens,
+                repetition_penalty=1.1,
             )
         else:
             self.sampling_params = None
@@ -244,6 +245,7 @@ class LatentMASMethod:
                     temperature=self.temperature,
                     top_p=self.top_p,
                     past_key_values=past_for_decoding,
+                    repetition_penalty=1.1,
                 )
                 for idx in range(batch_size):
                     final_text = generated_batch[idx].strip()
