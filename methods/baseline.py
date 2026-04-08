@@ -75,6 +75,31 @@ class BaselineMethod:
                 cleaned_text = generated_text
             # =================================================
 
+            # ====== ChemProt 去重：模型复读时同一三元组会重复出现 ======
+            if self.task == "chemprot":
+                import json as _json
+                try:
+                    _data = _json.loads(cleaned_text)
+                    _rels = _data.get("relations", [])
+                    if isinstance(_rels, list):
+                        _seen = set()
+                        _deduped = []
+                        for _r in _rels:
+                            if isinstance(_r, dict):
+                                _key = (
+                                    str(_r.get("head", "")).strip().lower(),
+                                    str(_r.get("relation", "")).strip().lower(),
+                                    str(_r.get("tail", "")).strip().lower(),
+                                )
+                                if _key not in _seen:
+                                    _seen.add(_key)
+                                    _deduped.append(_r)
+                        _data["relations"] = _deduped
+                        cleaned_text = _json.dumps(_data, ensure_ascii=False)
+                except Exception:
+                    pass
+            # ======================================================
+
             # 注意这里传入的是 cleaned_text
             eval_result = evaluate_prediction(self.task, cleaned_text, item, idx)
             pred = eval_result["prediction"]

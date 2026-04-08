@@ -275,6 +275,31 @@ class LatentMASMethod:
             else:
                 cleaned_text = final_text
 
+            # ====== ChemProt 去重：模型复读时同一三元组会重复出现 ======
+            if self.task == "chemprot":
+                import json as _json
+                try:
+                    _data = _json.loads(cleaned_text)
+                    _rels = _data.get("relations", [])
+                    if isinstance(_rels, list):
+                        _seen = set()
+                        _deduped = []
+                        for _r in _rels:
+                            if isinstance(_r, dict):
+                                _key = (
+                                    str(_r.get("head", "")).strip().lower(),
+                                    str(_r.get("relation", "")).strip().lower(),
+                                    str(_r.get("tail", "")).strip().lower(),
+                                )
+                                if _key not in _seen:
+                                    _seen.add(_key)
+                                    _deduped.append(_r)
+                        _data["relations"] = _deduped
+                        cleaned_text = _json.dumps(_data, ensure_ascii=False)
+                except Exception:
+                    pass
+            # ======================================================
+
             # ====== 终极修复：坐标对齐吸附 (Coordinate Snapping) ======
             if self.task == "finer":
                 import json
@@ -510,6 +535,31 @@ class LatentMASMethod:
                 cleaned_text = final_text[start_idx:end_idx+1]
             else:
                 cleaned_text = final_text
+
+            # ====== ChemProt 去重：模型复读时同一三元组会重复出现 ======
+            if self.task == "chemprot":
+                import json as _json
+                try:
+                    _data = _json.loads(cleaned_text)
+                    _rels = _data.get("relations", [])
+                    if isinstance(_rels, list):
+                        _seen = set()
+                        _deduped = []
+                        for _r in _rels:
+                            if isinstance(_r, dict):
+                                _key = (
+                                    str(_r.get("head", "")).strip().lower(),
+                                    str(_r.get("relation", "")).strip().lower(),
+                                    str(_r.get("tail", "")).strip().lower(),
+                                )
+                                if _key not in _seen:
+                                    _seen.add(_key)
+                                    _deduped.append(_r)
+                        _data["relations"] = _deduped
+                        cleaned_text = _json.dumps(_data, ensure_ascii=False)
+                except Exception:
+                    pass
+            # ======================================================
 
             # ====== 终极修复：坐标对齐吸附 (Coordinate Snapping) ======
             if self.task == "finer":
