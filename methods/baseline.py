@@ -125,6 +125,7 @@ class BaselineMethod:
                     "raw_prediction": generated_text,
                     "agents": [agent_trace],
                     "correct": ok,
+                    "entities_meta": item.get("entities_meta", []),
                 }
             )
         return results

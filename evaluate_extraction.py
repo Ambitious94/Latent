@@ -400,6 +400,7 @@ def evaluate_chemprot(predictions: List[Dict], golds: List[Dict]) -> Dict[str, f
     """
     评估 ChemProt 化学-蛋白质关系抽取
     匹配标准: (head_text, relation_type, tail_text) 三元组完全匹配
+    支持实体列表吸附：若模型输出实体名与标准实体列表中某项完全匹配（忽略大小写），则替换为标准名
     """
     tp = fp = fn = 0
 
@@ -423,12 +424,21 @@ def evaluate_chemprot(predictions: List[Dict], golds: List[Dict]) -> Dict[str, f
         if not isinstance(gold_rels_raw, list):
             gold_rels_raw = []
 
+        # 3. 提取实体标准名集合（用于吸附）
+        entities_meta = pred.get("entities_meta", [])
+        canonical = {e["text"].strip().lower(): e["text"].strip() for e in entities_meta if isinstance(e, dict)}
+
+        def snap(name: str) -> str:
+            """将模型输出的实体名吸附到标准名（忽略大小写）"""
+            key = name.strip().lower()
+            return canonical.get(key, name.strip())
+
         # 4. 构建三元组集合 (转小写，去除空格，提升鲁棒性)
         pred_rels = set()
         for r in pred_rels_raw:
             if isinstance(r, dict) and "head" in r and "tail" in r and "relation" in r:
-                h = str(r["head"]).strip().lower()
-                t = str(r["tail"]).strip().lower()
+                h = snap(str(r["head"])).lower()
+                t = snap(str(r["tail"])).lower()
                 rel = str(r["relation"]).strip().lower()
                 if h and t and rel:
                     pred_rels.add((h, rel, t))

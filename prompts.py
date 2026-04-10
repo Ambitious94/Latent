@@ -1106,16 +1106,19 @@ Rules:
 - For companies/organizations, prefer "parent organization" or "subsidiary" over "part of" to match standard annotation guidelines.
 """
         elif dataset == "chemprot":
+            entity_list = item.get("entity_list", "") if item else ""
+            entity_section = f"\nAnnotated entities (ONLY use these, copy text exactly):\n{entity_list}\n" if entity_list else ""
             user_prompt = f"""Task: chemical-protein relation extraction.
-
-Output JSON format MUST EXACTLY MATCH this schema:
-{{"relations": [{{"head": "chemical_name", "relation": "ACTIVATOR", "tail": "protein_name"}}]}}
-
+{entity_section}
 Rules:
-- "head" MUST be the chemical compound.
-- "tail" MUST be the gene or protein.
-- "relation" MUST be one of the following exact interaction types: UPREGULATOR, DOWNREGULATOR, AGONIST, ANTAGONIST, SUBSTRATE.
-- If no relations exist in the text, output {{"relations": []}}.
+- "head" MUST be a CHEMICAL entity from the list above (copy text exactly).
+- "tail" MUST be a GENE-OR-GENE-PRODUCT entity from the list above (copy text exactly).
+- "relation" MUST be one of: UPREGULATOR, DOWNREGULATOR, AGONIST, ANTAGONIST, SUBSTRATE.
+- Only extract relations explicitly stated in the document.
+- If no valid relations exist, output {{"relations": []}}.
+
+Output JSON format:
+{{"relations": [{{"head": "chemical_name", "relation": "RELATION_TYPE", "tail": "gene_name"}}]}}
 
 Document text:
 {question}
@@ -1327,16 +1330,19 @@ Output Format:
 You have latent info from all partitions. Output the final extraction as JSON:
 """
         elif dataset == "chemprot":
+            entity_list = item.get("entity_list", "") if item else ""
+            entity_section = f"\nAnnotated entities (ONLY use these, copy text exactly):\n{entity_list}\n" if entity_list else ""
             user_prompt = f"""Task: chemical-protein relation extraction.
-
-Output JSON format MUST EXACTLY MATCH this schema:
-{{"relations": [{{"head": "chemical_name", "relation": "ACTIVATOR", "tail": "protein_name"}}]}}
-
+{entity_section}
 Rules:
-- "head" MUST be the chemical compound.
-- "tail" MUST be the gene or protein.
-- "relation" MUST be one of the following exact interaction types: UPREGULATOR, DOWNREGULATOR, AGONIST, ANTAGONIST, SUBSTRATE.
-- If no relations exist in the text, output {{"relations": []}}.
+- "head" MUST be a CHEMICAL entity from the list above (copy text exactly).
+- "tail" MUST be a GENE-OR-GENE-PRODUCT entity from the list above (copy text exactly).
+- "relation" MUST be one of: UPREGULATOR, DOWNREGULATOR, AGONIST, ANTAGONIST, SUBSTRATE.
+- Only extract relations explicitly stated in the document.
+- If no valid relations exist, output {{"relations": []}}.
+
+Output JSON format:
+{{"relations": [{{"head": "chemical_name", "relation": "RELATION_TYPE", "tail": "gene_name"}}]}}
 
 Document text:
 {question}

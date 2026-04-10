@@ -933,15 +933,33 @@ def load_chemprot(split: str = "train", max_samples: Optional[int] = None) -> It
         passages = item.get("passages", [])
         text = " ".join([p.get("text", [""])[0] for p in passages if isinstance(p, dict)]).strip()
 
-        # 建立实体ID到文本的映射，用于解析关系
+        # 建立实体ID到文本和类型的映射
         id2text = {}
+        id2type = {}
         for ent in item.get("entities", []):
             if isinstance(ent, dict):
                 ent_id = ent.get("id")
                 ent_text = ent.get("text", [""])
                 ent_text = ent_text[0] if isinstance(ent_text, list) and ent_text else ""
+                ent_type = ent.get("type", "")
+                ent_type = ent_type[0] if isinstance(ent_type, list) and ent_type else str(ent_type)
                 if ent_id:
                     id2text[ent_id] = ent_text
+                    id2type[ent_id] = ent_type
+
+        # 去重实体列表，分配连续索引，供 prompt 使用
+        seen_texts = {}  # text -> idx
+        entities_for_prompt = []
+        for ent in item.get("entities", []):
+            if not isinstance(ent, dict):
+                continue
+            ent_id = ent.get("id")
+            ent_text = id2text.get(ent_id, "")
+            ent_type = id2type.get(ent_id, "")
+            if ent_text and ent_text not in seen_texts:
+                idx = len(entities_for_prompt)
+                seen_texts[ent_text] = idx
+                entities_for_prompt.append({"idx": idx, "text": ent_text, "type": ent_type})
 
         relations = []
         for rel in item.get("relations", []):
@@ -963,12 +981,18 @@ def load_chemprot(split: str = "train", max_samples: Optional[int] = None) -> It
 
         gold_json = {"relations": relations}
 
+        # 构建实体列表字符串（供 prompt 使用，格式同 DocRED）
+        entity_lines = [f"[{e['idx']}] ({e['type']}) {e['text']}" for e in entities_for_prompt]
+        entity_list_str = "\n".join(entity_lines)
+
         yield {
             "question": text,
             "gold": json.dumps(gold_json, ensure_ascii=False),
             "solution": json.dumps(gold_json, ensure_ascii=False),
             "extract_template": '{"relations": [{"head": "", "relation": "", "tail": ""}]}',
             "dataset": "chemprot",
+            "entity_list": entity_list_str,
+            "entities_meta": entities_for_prompt,
         }
 
         count += 1

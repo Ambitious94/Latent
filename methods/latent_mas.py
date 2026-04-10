@@ -344,6 +344,7 @@ class LatentMASMethod:
                     "raw_prediction": final_text,
                     "agents": agent_traces[idx],
                     "correct": ok,
+                    "entities_meta": item.get("entities_meta", []),
                 }
             )
         return results
@@ -604,6 +605,7 @@ class LatentMASMethod:
                     "raw_prediction": final_text,
                     "agents": agent_traces[idx],
                     "correct": ok,
+                    "entities_meta": item.get("entities_meta", []),
                 }
             )
         return results
