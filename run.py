@@ -219,9 +219,9 @@ def main():
         print("[INFO] Vision model detected, forcing batch_size=1")
         args.generate_bs = 1
 
-    # ChemProt outputs compact JSON (rarely exceeds 512 tokens).
-    # Cap max_new_tokens automatically unless the user explicitly raised it.
-    _CHEMPROT_MAX_TOKENS = 512
+    # ChemProt JSON output is compact, but Qwen3 thinking mode consumes tokens before JSON.
+    # 2048 gives enough room for <think>...</think> + JSON without repetition risk.
+    _CHEMPROT_MAX_TOKENS = 2048
     if args.task == "chemprot" and args.max_new_tokens > _CHEMPROT_MAX_TOKENS:
         print(f"[INFO] chemprot task: capping max_new_tokens {args.max_new_tokens} → {_CHEMPROT_MAX_TOKENS} "
               f"(pass --max_new_tokens larger value to override)")

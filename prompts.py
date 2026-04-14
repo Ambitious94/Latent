@@ -1111,15 +1111,16 @@ Rules:
             user_prompt = f"""Task: chemical-protein relation extraction.
 {entity_section}
 Rules:
-- "head" MUST be a CHEMICAL entity from the list above (copy text exactly).
-- "tail" MUST be a GENE-OR-GENE-PRODUCT entity from the list above (copy text exactly).
+- "head" MUST be a CHEMICAL entity (copy text exactly from the list).
+- "tail" MUST be a GENE-Y entity only — do NOT use GENE-N entities as tail (copy text exactly from the list).
 - "relation" MUST be one of: UPREGULATOR, DOWNREGULATOR, AGONIST, ANTAGONIST, SUBSTRATE.
-- Only extract relations explicitly stated in the document.
+- Only extract relations explicitly stated in the document. Do not infer.
 - If no valid relations exist, output {{"relations": []}}.
 
 Output JSON format:
 {{"relations": [{{"head": "chemical_name", "relation": "RELATION_TYPE", "tail": "gene_name"}}]}}
 
+/no_think
 Document text:
 {question}
 
@@ -1335,15 +1336,16 @@ You have latent info from all partitions. Output the final extraction as JSON:
             user_prompt = f"""Task: chemical-protein relation extraction.
 {entity_section}
 Rules:
-- "head" MUST be a CHEMICAL entity from the list above (copy text exactly).
-- "tail" MUST be a GENE-OR-GENE-PRODUCT entity from the list above (copy text exactly).
+- "head" MUST be a CHEMICAL entity (copy text exactly from the list).
+- "tail" MUST be a GENE-Y entity only — do NOT use GENE-N entities as tail (copy text exactly from the list).
 - "relation" MUST be one of: UPREGULATOR, DOWNREGULATOR, AGONIST, ANTAGONIST, SUBSTRATE.
-- Only extract relations explicitly stated in the document.
+- Only extract relations explicitly stated in the document. Do not infer.
 - If no valid relations exist, output {{"relations": []}}.
 
 Output JSON format:
 {{"relations": [{{"head": "chemical_name", "relation": "RELATION_TYPE", "tail": "gene_name"}}]}}
 
+/no_think
 Document text:
 {question}
 
