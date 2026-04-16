@@ -1960,16 +1960,21 @@ Output JSON format example:
 {"menu": [{"nm": "EGG TART", "cnt": "1", "price": "13,000"}], "total": {"total_price": "13,000", "cashprice": "15,000", "changeprice": "2,000"}}"""
     
     elif dataset == "chemprot":
-        instruction = """Task: chemical-protein relation extraction.
-
-Output JSON format MUST EXACTLY MATCH this schema:
-{"relations": [{"head": "chemical_name", "relation": "ACTIVATOR", "tail": "protein_name"}]}
-
+        entity_list = item.get("entity_list", "")
+        entity_section = f"\nAnnotated entities (ONLY use these, copy text exactly):\n{entity_list}\n" if entity_list else ""
+        instruction = f"""Task: chemical-protein relation extraction.
+{entity_section}
 Rules:
-- "head" MUST be the chemical compound.
-- "tail" MUST be the gene or protein.
-- "relation" MUST be one of the following exact interaction types: UPREGULATOR, DOWNREGULATOR, AGONIST, ANTAGONIST, SUBSTRATE.
-- If no relations exist in the text, output {"relations": []}."""
+- "head" MUST be a CHEMICAL entity (copy text exactly from the list).
+- "tail" MUST be a GENE-Y entity only — do NOT use GENE-N entities as tail (copy text exactly from the list).
+- "relation" MUST be one of: UPREGULATOR, DOWNREGULATOR, AGONIST, ANTAGONIST, SUBSTRATE.
+- Only extract relations explicitly stated in the document. Do not infer.
+- If no valid relations exist, output {{"relations": []}}.
+
+Output JSON format:
+{{"relations": [{{"head": "chemical_name", "relation": "RELATION_TYPE", "tail": "gene_name"}}]}}
+
+/no_think"""
     
     else:
         instruction = "Task: Extract information from the document."

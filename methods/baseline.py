@@ -62,15 +62,17 @@ class BaselineMethod:
             )
 
         results: List[Dict] = []
-        
+
         for idx, item in enumerate(items):
             generated_text = generated_batch[idx]
 
-            # ====== 新增：剥离 <think> 标签，精准提取 JSON ======
-            start_idx = generated_text.find('{')
-            end_idx = generated_text.rfind('}')
+            # 先剥离 <think>...</think> 块，再提取 JSON
+            import re as _re
+            stripped = _re.sub(r"<think>.*?</think>", "", generated_text, flags=_re.DOTALL).strip()
+            start_idx = stripped.find('{')
+            end_idx = stripped.rfind('}')
             if start_idx != -1 and end_idx != -1 and start_idx <= end_idx:
-                cleaned_text = generated_text[start_idx:end_idx+1]
+                cleaned_text = stripped[start_idx:end_idx+1]
             else:
                 cleaned_text = generated_text
             # =================================================

@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+from copy import deepcopy
 from typing import Dict, List, Tuple
 
 from tqdm import tqdm
@@ -201,12 +202,13 @@ def main():
     parser.add_argument("--generate_bs", type=int, default=20, help="Batch size for generation")
     parser.add_argument("--text_mas_context_length", type=int, default=-1, help="TextMAS context length limit")
     parser.add_argument("--think", action="store_true", help="Manually add think token in the prompt for LatentMAS")
+    parser.add_argument("--use_verifier", action="store_true", help="Run an independent verifier agent after judger (extraction tasks only)")
+    parser.add_argument("--verifier_without_lora", action="store_true", help="Run verifier with base model only, without loading LoRA weights")
     parser.add_argument("--latent_space_realign", action="store_true")
     parser.add_argument("--seed", type=int, default=42)
 
     # vLLM support
     parser.add_argument("--use_vllm", action="store_true", help="Use vLLM backend for generation")
-    parser.add_argument("--use_verifier", action="store_true", help="Run an independent verifier after judger (extraction tasks only)")
     parser.add_argument("--enable_prefix_caching", action="store_true", help="Enable prefix caching in vLLM for latent_mas")
     parser.add_argument("--use_second_HF_model", action="store_true", help="Use a second HF model for latent generation in latent_mas")
     parser.add_argument("--device2", type=str, default="cuda:1")
@@ -235,6 +237,11 @@ def main():
     set_seed(args.seed)
     device = auto_device(args.device)
     model = ModelWrapper(args.model_name, device, use_vllm=args.use_vllm, args=args)
+    verifier_model = model
+    if args.use_verifier and args.verifier_without_lora and args.lora_weights:
+        verifier_args = deepcopy(args)
+        verifier_args.lora_weights = None
+        verifier_model = ModelWrapper(args.model_name, device, use_vllm=args.use_vllm, args=verifier_args)
     
     start_time = time.time()
 
@@ -268,6 +275,7 @@ def main():
             max_new_tokens_judger=args.max_new_tokens,
             **common_kwargs,
             generate_bs=args.generate_bs,
+            verifier_model=verifier_model,
             args=args,
         )
     elif args.method == 'latent_mas':
@@ -277,6 +285,7 @@ def main():
             judger_max_new_tokens=args.max_new_tokens,
             **common_kwargs,
             generate_bs=args.generate_bs, 
+            verifier_model=verifier_model,
             args=args,
         )
 

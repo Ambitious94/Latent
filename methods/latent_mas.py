@@ -32,10 +32,12 @@ class LatentMASMethod:
         temperature: float = 0.7,
         top_p: float = 0.95,
         generate_bs: int = 1,
+        verifier_model: ModelWrapper = None,
         args: argparse.Namespace = None,
     ) -> None:
         self.args = args
         self.model = model
+        self.verifier_model = verifier_model or model
         self.latent_steps = latent_steps
         self.judger_max_new_tokens = judger_max_new_tokens
         self.temperature = temperature
@@ -272,6 +274,7 @@ class LatentMASMethod:
             from prompts import build_extraction_prompts_hierarchical, build_extraction_prompts_sequential
 
             verifier = verifier_agent()
+            verifier_model = self.verifier_model
             for idx, item in enumerate(items):
                 item["_judger_output"] = final_texts[idx]
 
@@ -301,10 +304,10 @@ class LatentMASMethod:
                 ]
 
             try:
-                v_prompts, v_ids, v_mask, v_tokens_batch, v_extra_inputs = self.model.prepare_chat_batch(
+                v_prompts, v_ids, v_mask, v_tokens_batch, v_extra_inputs = verifier_model.prepare_chat_batch(
                     verifier_messages, add_generation_prompt=True
                 )
-                verifier_generated, _ = self.model.generate_text_batch(
+                verifier_generated, _ = verifier_model.generate_text_batch(
                     v_ids,
                     v_mask,
                     max_new_tokens=self.judger_max_new_tokens,
@@ -339,12 +342,14 @@ class LatentMASMethod:
             final_text = final_texts[idx]
 
             # ====== 新增：剥离 <think> 标签，精准提取 JSON ======
-            start_idx = final_text.find('{')
-            end_idx = final_text.rfind('}')
+            import re as _re
+            stripped = _re.sub(r"<think>.*?</think>", "", final_text, flags=_re.DOTALL).strip()
+            start_idx = stripped.find('{')
+            end_idx = stripped.rfind('}')
             if start_idx != -1 and end_idx != -1 and start_idx <= end_idx:
-                cleaned_text = final_text[start_idx:end_idx+1]
+                cleaned_text = stripped[start_idx:end_idx+1]
             else:
-                cleaned_text = final_text
+                cleaned_text = stripped
 
             # ====== ChemProt 去重：模型复读时同一三元组会重复出现 ======
             if self.task == "chemprot":
@@ -601,6 +606,7 @@ class LatentMASMethod:
             from prompts import build_extraction_prompts_hierarchical, build_extraction_prompts_sequential
 
             verifier = verifier_agent()
+            verifier_model = self.verifier_model
             for idx, item in enumerate(items):
                 item["_judger_output"] = final_texts[idx]
 
@@ -630,10 +636,10 @@ class LatentMASMethod:
                 ]
 
             try:
-                v_prompts, v_ids, v_mask, v_tokens_batch, _ = self.model.prepare_chat_batch(
+                v_prompts, v_ids, v_mask, v_tokens_batch, _ = verifier_model.prepare_chat_batch(
                     verifier_messages, add_generation_prompt=True
                 )
-                verifier_generated = self.model.vllm_generate_text_batch(
+                verifier_generated = verifier_model.vllm_generate_text_batch(
                     v_prompts,
                     max_new_tokens=self.judger_max_new_tokens,
                     temperature=_VERIFIER_TEMPERATURE,
@@ -665,12 +671,14 @@ class LatentMASMethod:
             final_text = final_texts[idx]
 
             # ====== 新增：剥离 <think> 标签，精准提取 JSON ======
-            start_idx = final_text.find('{')
-            end_idx = final_text.rfind('}')
+            import re as _re
+            stripped = _re.sub(r"<think>.*?</think>", "", final_text, flags=_re.DOTALL).strip()
+            start_idx = stripped.find('{')
+            end_idx = stripped.rfind('}')
             if start_idx != -1 and end_idx != -1 and start_idx <= end_idx:
-                cleaned_text = final_text[start_idx:end_idx+1]
+                cleaned_text = stripped[start_idx:end_idx+1]
             else:
-                cleaned_text = final_text
+                cleaned_text = stripped
 
             # ====== ChemProt 去重：模型复读时同一三元组会重复出现 ======
             if self.task == "chemprot":
