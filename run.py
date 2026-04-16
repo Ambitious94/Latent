@@ -204,6 +204,7 @@ def main():
     parser.add_argument("--think", action="store_true", help="Manually add think token in the prompt for LatentMAS")
     parser.add_argument("--use_verifier", action="store_true", help="Run an independent verifier agent after judger (extraction tasks only)")
     parser.add_argument("--verifier_without_lora", action="store_true", help="Run verifier with base model only, without loading LoRA weights")
+    parser.add_argument("--verifier_device", type=str, default=None, help="Device for the verifier model when loading it separately; defaults to --device2 if set")
     parser.add_argument("--latent_space_realign", action="store_true")
     parser.add_argument("--seed", type=int, default=42)
 
@@ -224,7 +225,7 @@ def main():
 
     # ChemProt JSON output is compact, but Qwen3 thinking mode consumes tokens before JSON.
     # 2048 gives enough room for <think>...</think> + JSON without repetition risk.
-    _CHEMPROT_MAX_TOKENS = 2048
+    _CHEMPROT_MAX_TOKENS = 512
     if args.task == "chemprot" and args.max_new_tokens > _CHEMPROT_MAX_TOKENS:
         print(f"[INFO] chemprot task: capping max_new_tokens {args.max_new_tokens} → {_CHEMPROT_MAX_TOKENS} "
               f"(pass --max_new_tokens larger value to override)")
@@ -239,9 +240,12 @@ def main():
     model = ModelWrapper(args.model_name, device, use_vllm=args.use_vllm, args=args)
     verifier_model = model
     if args.use_verifier and args.verifier_without_lora and args.lora_weights:
+        verifier_device_str = args.verifier_device or args.device2 or args.device
+        verifier_device = auto_device(verifier_device_str)
+        print(f"[INFO] Loading verifier base model on {verifier_device}")
         verifier_args = deepcopy(args)
         verifier_args.lora_weights = None
-        verifier_model = ModelWrapper(args.model_name, device, use_vllm=args.use_vllm, args=verifier_args)
+        verifier_model = ModelWrapper(args.model_name, verifier_device, use_vllm=args.use_vllm, args=verifier_args)
     
     start_time = time.time()
 
