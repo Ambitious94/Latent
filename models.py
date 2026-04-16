@@ -305,9 +305,10 @@ class ModelWrapper:
     ) -> List[str]:
         if not self.vllm_engine:
             raise RuntimeError("vLLM engine not initialized. Pass use_vllm=True to ModelWrapper.")
+        do_sample = temperature is not None and temperature > 0
         sampling_params = SamplingParams(
-            temperature=temperature,
-            top_p=top_p,
+            temperature=(temperature if do_sample else 0.0),
+            top_p=(top_p if do_sample else 1.0),
             max_tokens=max_new_tokens,
             repetition_penalty=repetition_penalty,
         )
@@ -383,6 +384,8 @@ class ModelWrapper:
         top_p: float = 0.95,
         past_key_values: Optional[Tuple] = None,
         repetition_penalty: float = 1.1,
+        pixel_values: Optional[torch.Tensor] = None,
+        image_grid_thw: Optional[torch.Tensor] = None,
     ) -> Tuple[List[str], Optional[Tuple]]:
         if input_ids.dim() != 2:
             raise ValueError("input_ids must be 2D with shape [batch, seq_len]")
@@ -404,19 +407,26 @@ class ModelWrapper:
                     device=attention_mask.device,
                 )
                 attention_mask = torch.cat([past_mask, attention_mask], dim=-1)
+        generate_kwargs = {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "max_new_tokens": max_new_tokens,
+            "temperature": (temperature if temperature > 0 else 1.0),
+            "top_p": (top_p if temperature > 0 else 1.0),
+            "do_sample": bool(temperature > 0),
+            "pad_token_id": self.tokenizer.pad_token_id,
+            "repetition_penalty": repetition_penalty,
+            "return_dict_in_generate": True,
+            "output_scores": False,
+            "past_key_values": past_key_values,
+            "cache_position": cache_position,
+        }
+        if self.is_vision_model and pixel_values is not None:
+            generate_kwargs["pixel_values"] = pixel_values
+            if image_grid_thw is not None:
+                generate_kwargs["image_grid_thw"] = image_grid_thw
         outputs = self.model.generate(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            top_p=top_p,
-            do_sample=True,
-            pad_token_id=self.tokenizer.pad_token_id,
-            repetition_penalty=repetition_penalty,
-            return_dict_in_generate=True,
-            output_scores=False,
-            past_key_values=past_key_values,
-            cache_position=cache_position,
+            **generate_kwargs,
         )
         sequences = outputs.sequences
         generations: List[str] = []
@@ -634,4 +644,3 @@ class ModelWrapper:
             curr_output_embedding.append(latent_embed.detach())
 
         return past, torch.cat(curr_output_embedding, dim=1) # Output input embeddings
-

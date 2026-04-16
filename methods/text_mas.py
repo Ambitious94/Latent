@@ -1,12 +1,15 @@
 from typing import Dict, List
 
-from . import default_agents
+from . import default_agents, verifier_agent
 from models import ModelWrapper
 # from prompts import build_agent_messages, build_agent_messages_v6, build_agent_messages_v6_text_mas
 from prompts import build_agent_messages_hierarchical_text_mas, build_agent_messages_sequential_text_mas
 from utils import evaluate_prediction
 import argparse
 import json
+
+_VERIFIER_TEMPERATURE = 0.0
+_VERIFIER_TOP_P = 1.0
 
 class TextMASMethod:
     def __init__(
@@ -154,6 +157,88 @@ class TextMASMethod:
                         "output": text_out,
                     }
                 )
+
+        use_verifier = getattr(self.args, "use_verifier", False)
+        verifier_tasks = ["chemprot", "docred", "cord", "funsd"]
+        if use_verifier and self.args.task in verifier_tasks:
+            from prompts import (
+                build_extraction_prompts_text_mas_hierarchical,
+                build_extraction_prompts_text_mas_sequential,
+            )
+
+            verifier = verifier_agent()
+            for idx, item in enumerate(items):
+                item["_judger_output"] = final_texts[idx]
+
+            if self.args.prompt == "hierarchical":
+                verifier_messages = [
+                    build_extraction_prompts_text_mas_hierarchical(
+                        dataset=self.args.task,
+                        role="verifier",
+                        question=item["question"],
+                        context="",
+                        item=item,
+                        method=self.method_name,
+                        args=self.args,
+                    )
+                    for item in items
+                ]
+            else:
+                verifier_messages = [
+                    build_extraction_prompts_text_mas_sequential(
+                        dataset=self.args.task,
+                        role="verifier",
+                        question=item["question"],
+                        context="",
+                        item=item,
+                        method=self.method_name,
+                        args=self.args,
+                    )
+                    for item in items
+                ]
+
+            try:
+                v_prompts, v_ids, v_mask, v_tokens_batch, v_extra_inputs = self.model.prepare_chat_batch(
+                    verifier_messages, add_generation_prompt=True
+                )
+                if self.model.use_vllm:
+                    verifier_generated = self.model.vllm_generate_text_batch(
+                        v_prompts,
+                        max_new_tokens=self.max_new_tokens_judger,
+                        temperature=_VERIFIER_TEMPERATURE,
+                        top_p=_VERIFIER_TOP_P,
+                        repetition_penalty=1.1,
+                    )
+                else:
+                    verifier_generated, _ = self.model.generate_text_batch(
+                        v_ids,
+                        v_mask,
+                        max_new_tokens=self.max_new_tokens_judger,
+                        temperature=_VERIFIER_TEMPERATURE,
+                        top_p=_VERIFIER_TOP_P,
+                        past_key_values=None,
+                        repetition_penalty=1.1,
+                        pixel_values=v_extra_inputs.get("pixel_values") if v_extra_inputs else None,
+                        image_grid_thw=v_extra_inputs.get("image_grid_thw") if v_extra_inputs else None,
+                    )
+
+                for idx in range(batch_size):
+                    final_texts[idx] = verifier_generated[idx].strip()
+                    mask = v_mask[idx].bool()
+                    trimmed_ids = v_ids[idx][mask].to("cpu").tolist()
+                    agent_traces[idx].append(
+                        {
+                            "name": verifier.name,
+                            "role": verifier.role,
+                            "input": v_prompts[idx],
+                            "input_ids": trimmed_ids,
+                            "input_tokens": v_tokens_batch[idx],
+                            "output": final_texts[idx],
+                        }
+                    )
+            finally:
+                for item in items:
+                    item.pop("_judger_output", None)
 
         results: List[Dict] = []
         for idx, item in enumerate(items):

@@ -17,4 +17,8 @@ def default_agents() -> List[Agent]:
     ]
 
 
-__all__ = ["Agent", "default_agents"]
+def verifier_agent() -> Agent:
+    return Agent(name="Verifier", role="verifier")
+
+
+__all__ = ["Agent", "default_agents", "verifier_agent"]

@@ -1140,6 +1140,9 @@ Instructions:
 
 Output the extracted information as JSON:
 """
+    elif role == "verifier":
+        system_message = "You are an expert document information extraction system. Extract structured information accurately and output valid JSON only."
+        user_prompt = _build_extraction_verifier_prompt(dataset, question, item, template_str)
     
     return [
         {"role": "system", "content": system_message},
@@ -1364,6 +1367,9 @@ Output Format:
 
 You have latent info from all partitions. Output the final extraction as JSON:
 """
+    elif role == "verifier":
+        system_message = "You are an expert document information extraction system. Extract structured information accurately and output valid JSON only."
+        user_prompt = _build_extraction_verifier_prompt(dataset, question, item, template_str)
     
     # Check if item has image (multimodal)
     if "image" in item and item["image"] is not None:
@@ -1419,6 +1425,75 @@ def build_multimodal_extraction_message(role: str, image, text_prompt: str, syst
         })
     
     return messages
+
+
+def _build_extraction_verifier_prompt(dataset: str, question: str, item: dict, template_str: str = "{}") -> str:
+    judger_output = item.get("_judger_output", "{}")
+    entity_list = item.get("entity_list", "")
+
+    entity_section = ""
+    if entity_list:
+        entity_section = f"\nEntity List:\n{entity_list}\n"
+
+    if dataset == "chemprot":
+        instruction = """Task: Verify and correct the ChemProt extraction JSON.
+
+Rules:
+- Keep the final output as valid JSON only, using schema {"relations": [{"head": "...", "relation": "...", "tail": "..."}]}.
+- Check that every relation head is a CHEMICAL mention from the source text.
+- Check that every relation tail is a GENE-Y mention from the source text, not a GENE-N mention.
+- relation must be exactly one of: UPREGULATOR, DOWNREGULATOR, AGONIST, ANTAGONIST, SUBSTRATE.
+- Remove unsupported, text-groundless, or duplicated relations.
+- If nothing valid remains, output {"relations": []}."""
+    elif dataset == "docred":
+        rel_names_list = ", ".join(f'"{name}"' for name in DOCRED_REL_MAP.values())
+        instruction = f"""Task: Verify and correct the DocRED extraction JSON.
+
+Rules:
+- Keep the final output as valid JSON only, using schema {{"relations": [{{"head_id": 0, "relation": "country", "tail_id": 5}}]}}.
+- head_id and tail_id must be valid integer indices into the provided entity list.
+- head_id must not equal tail_id.
+- relation must be one of these exact names: {rel_names_list}.
+- Remove unsupported, out-of-range, self-loop, or duplicated relations.
+- Do not invent relations not grounded in the document."""
+    elif dataset == "cord":
+        instruction = f"""Task: Verify and correct the CORD extraction JSON.
+
+Required schema:
+{template_str}
+
+Rules:
+- Output valid JSON only with exactly two top-level keys: "menu" and "total".
+- "menu" must be a list of objects containing exactly keys "nm", "cnt", "price".
+- "total" must contain exactly keys "total_price", "cashprice", "changeprice", "subtotal_price", "tax_price".
+- If any required key is missing, add it with empty string "".
+- Numeric fields must remain strings and should contain only plausible numeric text from the document; if invalid or missing, use "".
+- Remove any extra top-level keys."""
+    elif dataset == "funsd":
+        instruction = f"""Task: Verify and correct the FUNSD extraction JSON.
+
+Required schema:
+{template_str}
+
+Rules:
+- Output valid JSON only.
+- Every entity must have a unique integer "id".
+- Every entity label must be exactly one of: question, answer, header, other.
+- Every relation head/tail must refer to an existing entity id.
+- Remove or repair invalid entities and relations.
+- Keep relation type consistent with the schema."""
+    else:
+        instruction = "Task: Verify and correct the extraction JSON. Output valid JSON only."
+
+    return f"""{instruction}
+{entity_section}
+Source Document:
+{question}
+
+Judger JSON Output:
+{judger_output}
+
+Return the corrected final JSON only. Do not include explanations."""
 
 
 def build_extraction_prompts_text_mas_sequential(dataset: str, role: str, question: str, context: str, item: dict, method=None, args=None):
@@ -1592,6 +1667,9 @@ Previous agents found:
 
 Begin your analysis:
 """
+    elif role == "verifier":
+        system_message = "You are an expert document information extraction system. Extract structured information accurately and output valid JSON only."
+        user_prompt = _build_extraction_verifier_prompt(dataset, question, item, template_str)
     
     # Check if item has image (multimodal)
     if "image" in item and item["image"] is not None:
@@ -1778,6 +1856,9 @@ Partition findings:
 
 Begin your analysis:
 """
+    elif role == "verifier":
+        system_message = "You are an expert document information extraction system. Extract structured information accurately and output valid JSON only."
+        user_prompt = _build_extraction_verifier_prompt(dataset, question, item, template_str)
     
     # Check if item has image (multimodal)
     if "image" in item and item["image"] is not None:
